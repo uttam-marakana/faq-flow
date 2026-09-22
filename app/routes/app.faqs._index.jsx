@@ -1,4 +1,4 @@
-import { useLoaderData, useNavigation, useSubmit } from "react-router";
+import { Form, useLoaderData, useNavigation, useSubmit } from "react-router";
 
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -11,15 +11,19 @@ export async function loader({ request }) {
   const url = new URL(request.url);
 
   const search = url.searchParams.get("search")?.trim() || "";
-  const status = url.searchParams.get("status") || "";
-  const categoryId = url.searchParams.get("category") || "";
+
+  const statusParam = url.searchParams.get("status") || "all";
+  const categoryParam = url.searchParams.get("category") || "all";
+
+  const status = statusParam === "all" ? "" : statusParam;
+  const categoryId = categoryParam === "all" ? "" : categoryParam;
 
   const requestedPage = Number.parseInt(
     url.searchParams.get("page") || "1",
     10,
   );
 
-  const page =
+  const requestedPageNumber =
     Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
 
   const where = {
@@ -47,20 +51,26 @@ export async function loader({ request }) {
     ...(categoryId ? { categoryId } : {}),
   };
 
-  const totalFaqsPromise = prisma.faq.count({
-    where,
-  });
+  const [totalFaqs, categories] = await Promise.all([
+    prisma.faq.count({
+      where,
+    }),
 
-  const categoriesPromise = prisma.category.findMany({
-    where: {
-      shop: session.shop,
-    },
-    orderBy: {
-      name: "asc",
-    },
-  });
+    prisma.category.findMany({
+      where: {
+        shop: session.shop,
+      },
+      orderBy: {
+        name: "asc",
+      },
+    }),
+  ]);
 
-  const faqsPromise = prisma.faq.findMany({
+  const totalPages = Math.max(Math.ceil(totalFaqs / PAGE_SIZE), 1);
+
+  const currentPage = Math.min(requestedPageNumber, totalPages);
+
+  const faqs = await prisma.faq.findMany({
     where,
     include: {
       category: true,
@@ -73,19 +83,9 @@ export async function loader({ request }) {
         createdAt: "desc",
       },
     ],
-    skip: (page - 1) * PAGE_SIZE,
+    skip: (currentPage - 1) * PAGE_SIZE,
     take: PAGE_SIZE,
   });
-
-  const [totalFaqs, categories, faqs] = await Promise.all([
-    totalFaqsPromise,
-    categoriesPromise,
-    faqsPromise,
-  ]);
-
-  const totalPages = Math.max(Math.ceil(totalFaqs / PAGE_SIZE), 1);
-
-  const currentPage = Math.min(page, totalPages);
 
   return {
     faqs,
@@ -195,9 +195,13 @@ function buildPageUrl(filters, page) {
     params.set("category", filters.categoryId);
   }
 
-  params.set("page", page.toString());
+  if (page > 1) {
+    params.set("page", page.toString());
+  }
 
-  return `/app/faqs?${params.toString()}`;
+  const queryString = params.toString();
+
+  return `/app/faqs${queryString ? `?${queryString}` : ""}`;
 }
 
 export default function FAQs() {
@@ -206,9 +210,11 @@ export default function FAQs() {
   const navigation = useNavigation();
   const submit = useSubmit();
 
+  const isSubmitting = navigation.state === "submitting";
+
   const submittingFaqId =
-    navigation.state === "submitting"
-      ? navigation.formData?.get("faqId")?.toString()
+    isSubmitting && navigation.formData?.get("faqId")
+      ? navigation.formData.get("faqId").toString()
       : null;
 
   function handleDelete(faqId) {
@@ -243,34 +249,6 @@ export default function FAQs() {
     );
   }
 
-  function handleSearch(event) {
-    event.preventDefault();
-
-    const formData = new FormData(event.currentTarget);
-
-    const params = new URLSearchParams();
-
-    const search = formData.get("search")?.toString().trim();
-    const status = formData.get("status")?.toString();
-    const category = formData.get("category")?.toString();
-
-    if (search) {
-      params.set("search", search);
-    }
-
-    if (status) {
-      params.set("status", status);
-    }
-
-    if (category) {
-      params.set("category", category);
-    }
-
-    params.set("page", "1");
-
-    window.location.href = `/app/faqs?${params.toString()}`;
-  }
-
   return (
     <s-page heading="FAQs">
       <s-button slot="primary-action" variant="primary" href="/app/faqs/new">
@@ -284,7 +262,7 @@ export default function FAQs() {
             asked questions.
           </s-paragraph>
 
-          <form onSubmit={handleSearch}>
+          <Form method="get">
             <s-stack direction="block" gap="base">
               <s-text-field
                 name="search"
@@ -295,8 +273,12 @@ export default function FAQs() {
               />
 
               <s-stack direction="inline" gap="base">
-                <s-select name="status" label="Status" value={filters.status}>
-                  <s-option value="">All statuses</s-option>
+                <s-select
+                  name="status"
+                  label="Status"
+                  value={filters.status || "all"}
+                >
+                  <s-option value="all">All statuses</s-option>
                   <s-option value="published">Published</s-option>
                   <s-option value="draft">Draft</s-option>
                 </s-select>
@@ -304,9 +286,9 @@ export default function FAQs() {
                 <s-select
                   name="category"
                   label="Category"
-                  value={filters.categoryId}
+                  value={filters.categoryId || "all"}
                 >
-                  <s-option value="">All categories</s-option>
+                  <s-option value="all">All categories</s-option>
 
                   {categories.map((category) => (
                     <s-option key={category.id} value={category.id}>
@@ -324,7 +306,7 @@ export default function FAQs() {
                 <s-button href="/app/faqs">Clear filters</s-button>
               </s-stack>
             </s-stack>
-          </form>
+          </Form>
         </s-stack>
       </s-section>
 
