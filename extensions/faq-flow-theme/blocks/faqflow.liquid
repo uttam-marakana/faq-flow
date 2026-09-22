@@ -1,0 +1,183 @@
+{{ 'faqflow.css' | asset_url | stylesheet_tag }}
+
+<style>
+  #faqflow-{{ block.id }} {
+    --faqflow-max-width: {{ block.settings.content_width }}px;
+    --faqflow-accent-color: {{ block.settings.accent_color }};
+    --faqflow-question-color: {{ block.settings.question_color }};
+    --faqflow-answer-color: {{ block.settings.answer_color }};
+    --faqflow-border-radius: {{ block.settings.border_radius }}px;
+    --faqflow-border-width: {% if block.settings.show_borders %}1px{% else %}0px{% endif %};
+    --faqflow-heading-align: {{ block.settings.heading_alignment }};
+  }
+</style>
+
+<div
+  id="faqflow-{{ block.id }}"
+  class="faqflow"
+  data-faqflow
+  data-show-search="{{ block.settings.show_search }}"
+  data-show-categories="{{ block.settings.show_categories }}"
+  data-default-category="{{ block.settings.default_category | escape }}"
+  data-multiple-open="{{ block.settings.multiple_open }}"
+  data-empty-message="{{ block.settings.empty_message | escape }}"
+>
+  <div class="faqflow__header">
+    <h2 class="faqflow__heading">
+      {{ block.settings.heading | escape }}
+    </h2>
+  </div>
+
+  {% if block.settings.show_search %}
+    <div class="faqflow__search">
+      <label class="faqflow__search-label" for="faqflow-search-{{ block.id }}"> Search FAQs </label>
+
+      <input
+        id="faqflow-search-{{ block.id }}"
+        class="faqflow__search-input"
+        type="search"
+        placeholder="Search frequently asked questions"
+        autocomplete="off"
+        data-faqflow-search
+      >
+    </div>
+  {% endif %}
+
+  {% if block.settings.show_categories %}
+    <div class="faqflow__categories" data-faqflow-categories></div>
+  {% endif %}
+
+  <div class="faqflow__status" data-faqflow-status>Loading FAQs...</div>
+
+  <div class="faqflow__list" data-faqflow-list></div>
+</div>
+
+<script
+  src="{{ 'faqflow.js' | asset_url }}"
+  defer
+></script>
+
+{% schema %}
+{
+  "name": "FAQFlow FAQs",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Frequently Asked Questions"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_search",
+      "label": "Show search",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_categories",
+      "label": "Show categories",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "default_category",
+      "label": "Default category",
+      "info": "Enter a category slug, such as shipping. Leave blank to show all FAQs."
+    },
+    {
+      "type": "checkbox",
+      "id": "multiple_open",
+      "label": "Allow multiple FAQs to stay open",
+      "default": false
+    },
+    {
+      "type": "text",
+      "id": "empty_message",
+      "label": "Empty state message",
+      "default": "No FAQs found."
+    },
+    {
+      "type": "range",
+      "id": "content_width",
+      "label": "Content width",
+      "min": 600,
+      "max": 1400,
+      "step": 50,
+      "unit": "px",
+      "default": 900
+    },
+    {
+      "type": "select",
+      "id": "heading_alignment",
+      "label": "Heading alignment",
+      "options": [
+        {
+          "value": "left",
+          "label": "Left"
+        },
+        {
+          "value": "center",
+          "label": "Center"
+        }
+      ],
+      "default": "left"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Accent color",
+      "default": "#111111"
+    },
+    {
+      "type": "color",
+      "id": "question_color",
+      "label": "Question text color",
+      "default": "#111111"
+    },
+    {
+      "type": "color",
+      "id": "answer_color",
+      "label": "Answer text color",
+      "default": "#333333"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_borders",
+      "label": "Show borders",
+      "default": true
+    },
+    {
+      "type": "range",
+      "id": "border_radius",
+      "label": "Border radius",
+      "min": 0,
+      "max": 24,
+      "step": 2,
+      "unit": "px",
+      "default": 6
+    },
+    {
+      "type": "select",
+      "id": "category_style",
+      "label": "Category style",
+      "options": [
+        {
+          "value": "pills",
+          "label": "Pills"
+        },
+        {
+          "value": "buttons",
+          "label": "Buttons"
+        },
+        {
+          "value": "tabs",
+          "label": "Tabs"
+        }
+      ],
+      "default": "pills"
+    }
+  ]
+}
+{% endschema %}
