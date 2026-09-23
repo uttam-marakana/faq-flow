@@ -1,6 +1,7 @@
 {{ 'faqflow.css' | asset_url | stylesheet_tag }}
 
 <style>
+  /* FAQFlow theme variables */
   #faqflow-{{ block.id }} {
     --faqflow-max-width: {{ block.settings.content_width }}px;
     --faqflow-accent-color: {{ block.settings.accent_color }};
@@ -21,6 +22,7 @@
   data-default-category="{{ block.settings.default_category | escape }}"
   data-multiple-open="{{ block.settings.multiple_open }}"
   data-empty-message="{{ block.settings.empty_message | escape }}"
+  data-category-style="{{ block.settings.category_style }}"
 >
   <div class="faqflow__header">
     <h2 class="faqflow__heading">
@@ -30,7 +32,12 @@
 
   {% if block.settings.show_search %}
     <div class="faqflow__search">
-      <label class="faqflow__search-label" for="faqflow-search-{{ block.id }}"> Search FAQs </label>
+      <label
+        class="faqflow__search-label"
+        for="faqflow-search-{{ block.id }}"
+      >
+        Search FAQs
+      </label>
 
       <input
         id="faqflow-search-{{ block.id }}"
@@ -106,7 +113,7 @@
       "max": 1400,
       "step": 50,
       "unit": "px",
-      "default": 900
+      "default": 1400
     },
     {
       "type": "select",
