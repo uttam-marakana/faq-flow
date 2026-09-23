@@ -60,9 +60,38 @@ model Faq {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  category Category?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  groups   FaqGroup[]
 
   @@index([shop])
   @@index([categoryId])
   @@map("FAQ")
+}
+
+model Group {
+  id          String   @id @default(cuid())
+  shop        String
+  name        String
+  slug        String
+  description String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  faqs FaqGroup[]
+
+  @@unique([shop, slug])
+  @@index([shop])
+}
+
+model FaqGroup {
+  faqId   String
+  groupId String
+
+  faq   Faq   @relation(fields: [faqId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([faqId, groupId])
+  @@index([groupId])
+  @@index([faqId])
 }
