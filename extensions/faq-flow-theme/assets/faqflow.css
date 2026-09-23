@@ -115,7 +115,7 @@
 
 /* FAQFlow search focus */
 .faqflow__search-input:focus {
-  outline: 2px solid var(--faqflow-accent-color, #111111);
+  outline: none;
   outline-offset: 2px;
 }
 
@@ -236,6 +236,7 @@
   background: transparent;
   color: var(--faqflow-accent-color, #111111);
   border-bottom-color: var(--faqflow-accent-color, #111111);
+  font-weight: 700;
 }
 
 /* FAQFlow loading and empty state */
