@@ -9,6 +9,8 @@ import {
 
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { faqHtmlToText, sanitizeFaqHtml } from "../utils/sanitizeHtml.server";
+import RichTextEditor from "../components/RichTextEditor";
 
 export async function loader({ request, params }) {
   const { session } = await authenticate.admin(request);
@@ -117,7 +119,11 @@ export async function action({ request, params }) {
 
   const question = formData.get("question")?.toString().trim() || "";
 
-  const answer = formData.get("answer")?.toString().trim() || "";
+  const rawAnswer = formData.get("answer")?.toString() || "";
+
+  const answer = sanitizeFaqHtml(rawAnswer);
+
+  const answerText = faqHtmlToText(answer);
 
   const rawCategoryId = formData.get("categoryId")?.toString().trim();
 
@@ -147,7 +153,7 @@ export async function action({ request, params }) {
     errors.question = "Question is required.";
   }
 
-  if (!answer) {
+  if (!answerText) {
     errors.answer = "Answer is required.";
   }
 
@@ -330,15 +336,13 @@ export default function FAQForm() {
               autocomplete="off"
             />
 
-            <s-text-area
+            <RichTextEditor
               name="answer"
               label="Answer"
-              placeholder="Write the answer to this question"
               value={values.answer}
               error={errors.answer}
-              rows="8"
               required
-              autocomplete="off"
+              placeholder="Write the answer to this question"
             />
 
             <s-select
