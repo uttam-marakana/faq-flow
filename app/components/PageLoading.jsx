@@ -1,15 +1,4 @@
-import { useNavigation } from "react-router";
-
 export default function PageLoading() {
-  const navigation = useNavigation();
-
-  const isLoading =
-    navigation.state === "loading" || navigation.state === "submitting";
-
-  if (!isLoading) {
-    return null;
-  }
-
   return (
     <>
       <style>
