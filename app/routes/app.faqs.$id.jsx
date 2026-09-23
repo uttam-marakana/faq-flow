@@ -89,27 +89,13 @@ export async function loader({ request, params }) {
 }
 
 export async function action({ request, params }) {
-  console.log("========== FAQ ACTION REACHED ==========");
-  console.log("METHOD:", request.method);
-  console.log("PARAMS:", params);
-
   const { session } = await authenticate.admin(request);
 
-  console.log("SHOP:", session.shop);
-
   const formData = await request.formData();
-
-  console.log("FORM DATA:");
-
-  for (const [key, value] of formData.entries()) {
-    console.log(`${key}:`, value);
-  }
 
   const intent = formData.get("intent")?.toString() || "save";
 
   if (intent === "delete") {
-    console.log("DELETE FAQ REQUEST");
-
     if (!params.id || params.id === "new") {
       return {
         success: false,
@@ -137,10 +123,6 @@ export async function action({ request, params }) {
       },
     });
 
-    console.log("========== FAQ DELETED ==========");
-    console.log("ID:", existingFaq.id);
-    console.log("SHOP:", existingFaq.shop);
-
     return redirect("/app/faqs");
   }
 
@@ -166,23 +148,11 @@ export async function action({ request, params }) {
   const categoryId =
     !rawCategoryId || rawCategoryId === "Uncategorized" ? "" : rawCategoryId;
 
-  console.log("RAW CATEGORY VALUE:", rawCategoryId);
-  console.log("NORMALIZED CATEGORY ID:", categoryId);
-
   const status = formData.get("status")?.toString() || "draft";
 
   const sortOrderValue = formData.get("sortOrder")?.toString() || "0";
 
   const sortOrder = Number.parseInt(sortOrderValue, 10);
-
-  console.log("PARSED FAQ DATA:", {
-    question,
-    answer,
-    categoryId,
-    groupIds,
-    status,
-    sortOrder,
-  });
 
   const errors = {};
 
@@ -203,8 +173,6 @@ export async function action({ request, params }) {
   }
 
   if (Object.keys(errors).length > 0) {
-    console.log("FAQ VALIDATION FAILED:", errors);
-
     return {
       success: false,
       errors,
@@ -228,8 +196,6 @@ export async function action({ request, params }) {
     });
 
     if (!category) {
-      console.log("FAQ CATEGORY VALIDATION FAILED:", categoryId);
-
       return {
         success: false,
         errors: {
@@ -293,8 +259,6 @@ export async function action({ request, params }) {
   };
 
   if (params.id === "new") {
-    console.log("CREATING FAQ...");
-
     const faq = await prisma.faq.create({
       data: {
         shop: session.shop,
@@ -307,18 +271,8 @@ export async function action({ request, params }) {
       },
     });
 
-    console.log("========== FAQ CREATED ==========");
-    console.log("ID:", faq.id);
-    console.log("SHOP:", faq.shop);
-    console.log("QUESTION:", faq.question);
-    console.log("CATEGORY ID:", faq.categoryId);
-    console.log("STATUS:", faq.status);
-    console.log("GROUP IDS:", groupIds);
-
     return redirect("/app/faqs");
   }
-
-  console.log("UPDATING FAQ:", params.id);
 
   const existingFaq = await prisma.faq.findFirst({
     where: {
@@ -359,14 +313,6 @@ export async function action({ request, params }) {
 
     return faq;
   });
-
-  console.log("========== FAQ UPDATED ==========");
-  console.log("ID:", updatedFaq.id);
-  console.log("SHOP:", updatedFaq.shop);
-  console.log("QUESTION:", updatedFaq.question);
-  console.log("CATEGORY ID:", updatedFaq.categoryId);
-  console.log("STATUS:", updatedFaq.status);
-  console.log("GROUP IDS:", groupIds);
 
   return redirect("/app/faqs");
 }
