@@ -1,24 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 
 import "../styles/rich-text-editor.css";
 
 const toolbarItems = [
-  {
-    command: "bold",
-    label: "Bold",
-    icon: "B",
-  },
-  {
-    command: "italic",
-    label: "Italic",
-    icon: "I",
-  },
-  {
-    command: "underline",
-    label: "Underline",
-    icon: "U",
-  },
+  { command: "bold", label: "Bold", icon: "B" },
+  { command: "italic", label: "Italic", icon: "I" },
+  { command: "underline", label: "Underline", icon: "U" },
   {
     command: "insertUnorderedList",
     label: "Bulleted list",
@@ -41,18 +29,31 @@ function RichTextEditor({
   onChange,
 }) {
   const editorRef = useRef(null);
-  const [html, setHtml] = useState(value || "");
+  const hiddenInputRef = useRef(null);
 
   useEffect(() => {
-    setHtml(value || "");
+    const nextValue = value || "";
 
-    if (editorRef.current && editorRef.current.innerHTML !== (value || "")) {
-      editorRef.current.innerHTML = value || "";
+    if (!editorRef.current) {
+      return;
+    }
+
+    if (!editorRef.current.matches(":focus")) {
+      if (editorRef.current.innerHTML !== nextValue) {
+        editorRef.current.innerHTML = nextValue;
+      }
+
+      if (hiddenInputRef.current) {
+        hiddenInputRef.current.value = nextValue;
+      }
     }
   }, [value]);
 
   function updateValue(nextHtml) {
-    setHtml(nextHtml);
+    if (hiddenInputRef.current) {
+      hiddenInputRef.current.value = nextHtml;
+    }
+
     onChange?.(nextHtml);
   }
 
@@ -86,7 +87,6 @@ function RichTextEditor({
     <div className="faqflow-editor">
       <label className="faqflow-editor__label">
         {label}
-
         {required ? <span aria-hidden="true"> *</span> : null}
       </label>
 
@@ -132,10 +132,15 @@ function RichTextEditor({
         aria-label={label}
         data-placeholder={placeholder}
         onInput={handleInput}
-        dangerouslySetInnerHTML={{ __html: html }}
+        suppressContentEditableWarning
       />
 
-      <input type="hidden" name={name} value={html} />
+      <input
+        ref={hiddenInputRef}
+        type="hidden"
+        name={name}
+        defaultValue={value || ""}
+      />
 
       {error ? (
         <div className="faqflow-editor__error" role="alert">
