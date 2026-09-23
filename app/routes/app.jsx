@@ -1,9 +1,14 @@
-import { Outlet, useLoaderData, useRouteError } from "react-router";
+import {
+  Outlet,
+  useLoaderData,
+  useNavigation,
+  useRouteError,
+} from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
-import PageLoading from "../components/PageLoading";
 
 import { authenticate } from "../shopify.server";
+import PageLoading from "../components/PageLoading";
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -15,6 +20,9 @@ export const loader = async ({ request }) => {
 
 export default function App() {
   const { apiKey } = useLoaderData();
+  const navigation = useNavigation();
+
+  const isLoading = navigation.state === "loading";
 
   return (
     <AppProvider embedded apiKey={apiKey}>
@@ -24,10 +32,7 @@ export default function App() {
         <s-link href="/app/categories">Categories</s-link>
       </s-app-nav>
 
-      {/* Loading component */}
-      <PageLoading />
-
-      <Outlet />
+      {isLoading ? <PageLoading /> : <Outlet />}
     </AppProvider>
   );
 }
