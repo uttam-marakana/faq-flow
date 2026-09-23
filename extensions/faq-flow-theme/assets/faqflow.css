@@ -191,6 +191,17 @@
   border-radius: var(--faqflow-border-radius, 6px);
 }
 
+.faqflow__category:focus-visible,
+.faqflow__search-input:focus-visible,
+.faqflow__question:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+.faqflow__category {
+  cursor: pointer;
+}
+
 /* FAQFlow tab category container */
 .faqflow[data-category-style="tabs"] .faqflow__categories {
   flex-wrap: nowrap;
@@ -765,5 +776,14 @@
 @media (prefers-reduced-motion: reduce) {
   .faqflow__category {
     transition: none;
+  }
+
+  .faqflow *,
+  .faqflow *::before,
+  .faqflow *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }
