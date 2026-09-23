@@ -85,13 +85,14 @@ model Group {
 }
 
 model FaqGroup {
-  faqId   String
-  groupId String
+  faqId     String
+  groupId   String
+  sortOrder Int    @default(0)
 
   faq   Faq   @relation(fields: [faqId], references: [id], onDelete: Cascade)
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
   @@id([faqId, groupId])
-  @@index([groupId])
+  @@index([groupId, sortOrder])
   @@index([faqId])
 }
