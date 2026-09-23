@@ -1,20 +1,6 @@
 {{ 'faqflow.css' | asset_url | stylesheet_tag }}
 
-<style>
-  /* FAQFlow theme variables */
-  #faqflow-{{ block.id }} {
-    --faqflow-max-width: {{ block.settings.content_width }}px;
-    --faqflow-accent-color: {{ block.settings.accent_color }};
-    --faqflow-question-color: {{ block.settings.question_color }};
-    --faqflow-answer-color: {{ block.settings.answer_color }};
-    --faqflow-border-radius: {{ block.settings.border_radius }}px;
-    --faqflow-border-width: {% if block.settings.show_borders %}1px{% else %}0px{% endif %};
-    --faqflow-heading-align: {{ block.settings.heading_alignment }};
-  }
-</style>
-
 <div
-  id="faqflow-{{ block.id }}"
   class="faqflow"
   data-faqflow
   data-show-search="{{ block.settings.show_search }}"
@@ -22,7 +8,7 @@
   data-default-category="{{ block.settings.default_category | escape }}"
   data-multiple-open="{{ block.settings.multiple_open }}"
   data-empty-message="{{ block.settings.empty_message | escape }}"
-  data-category-style="{{ block.settings.category_style }}"
+  data-enable-json-ld="{{ block.settings.enable_json_ld }}"
 >
   <div class="faqflow__header">
     <h2 class="faqflow__heading">
@@ -45,18 +31,34 @@
         type="search"
         placeholder="Search frequently asked questions"
         autocomplete="off"
+        aria-label="Search frequently asked questions"
         data-faqflow-search
       >
     </div>
   {% endif %}
 
   {% if block.settings.show_categories %}
-    <div class="faqflow__categories" data-faqflow-categories></div>
+    <nav
+      class="faqflow__categories"
+      aria-label="FAQ categories"
+      data-faqflow-categories
+    ></nav>
   {% endif %}
 
-  <div class="faqflow__status" data-faqflow-status>Loading FAQs...</div>
+  <div
+    class="faqflow__status"
+    data-faqflow-status
+    role="status"
+    aria-live="polite"
+    aria-atomic="true"
+  >
+    Loading FAQs...
+  </div>
 
-  <div class="faqflow__list" data-faqflow-list></div>
+  <div
+    class="faqflow__list"
+    data-faqflow-list
+  ></div>
 </div>
 
 <script
@@ -104,6 +106,13 @@
       "id": "empty_message",
       "label": "Empty state message",
       "default": "No FAQs found."
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_json_ld",
+      "label": "Enable FAQ structured data",
+      "info": "Adds FAQPage JSON-LD structured data for published FAQs.",
+      "default": true
     },
     {
       "type": "range",
