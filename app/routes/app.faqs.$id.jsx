@@ -259,7 +259,7 @@ export async function action({ request, params }) {
   };
 
   if (params.id === "new") {
-    const faq = await prisma.faq.create({
+    await prisma.faq.create({
       data: {
         shop: session.shop,
         ...data,
@@ -288,8 +288,8 @@ export async function action({ request, params }) {
     };
   }
 
-  const updatedFaq = await prisma.$transaction(async (tx) => {
-    const faq = await tx.faq.update({
+  await prisma.$transaction(async (tx) => {
+    await tx.faq.update({
       where: {
         id: existingFaq.id,
       },
@@ -310,8 +310,6 @@ export async function action({ request, params }) {
         })),
       });
     }
-
-    return faq;
   });
 
   return redirect("/app/faqs");
