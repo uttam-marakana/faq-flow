@@ -17,14 +17,30 @@ export async function loader({ request, params }) {
 
   const { id } = params;
 
-  const categories = await prisma.category.findMany({
-    where: {
-      shop: session.shop,
-    },
-    orderBy: {
-      name: "asc",
-    },
-  });
+  const [categories, groups] = await Promise.all([
+    prisma.category.findMany({
+      where: {
+        shop: session.shop,
+      },
+      orderBy: {
+        name: "asc",
+      },
+    }),
+
+    prisma.group.findMany({
+      where: {
+        shop: session.shop,
+      },
+      orderBy: [
+        {
+          sortOrder: "asc",
+        },
+        {
+          name: "asc",
+        },
+      ],
+    }),
+  ]);
 
   if (id === "new") {
     return {
@@ -37,6 +53,8 @@ export async function loader({ request, params }) {
         sortOrder: 0,
       },
       categories,
+      groups,
+      selectedGroupIds: [],
       isNew: true,
     };
   }
@@ -45,6 +63,13 @@ export async function loader({ request, params }) {
     where: {
       id,
       shop: session.shop,
+    },
+    include: {
+      groups: {
+        select: {
+          groupId: true,
+        },
+      },
     },
   });
 
@@ -57,6 +82,8 @@ export async function loader({ request, params }) {
   return {
     faq,
     categories,
+    groups,
+    selectedGroupIds: faq.groups.map((group) => group.groupId),
     isNew: false,
   };
 }
@@ -127,6 +154,15 @@ export async function action({ request, params }) {
 
   const rawCategoryId = formData.get("categoryId")?.toString().trim();
 
+  const groupIds = [
+    ...new Set(
+      formData
+        .getAll("groupIds")
+        .map((value) => value.toString().trim())
+        .filter(Boolean),
+    ),
+  ];
+
   const categoryId =
     !rawCategoryId || rawCategoryId === "Uncategorized" ? "" : rawCategoryId;
 
@@ -143,6 +179,7 @@ export async function action({ request, params }) {
     question,
     answer,
     categoryId,
+    groupIds,
     status,
     sortOrder,
   });
@@ -177,6 +214,7 @@ export async function action({ request, params }) {
         categoryId,
         status,
         sortOrder: sortOrderValue,
+        groupIds,
       },
     };
   }
@@ -203,6 +241,44 @@ export async function action({ request, params }) {
           categoryId,
           status,
           sortOrder: sortOrderValue,
+          groupIds,
+        },
+      };
+    }
+  }
+
+  if (groupIds.length > 0) {
+    const validGroups = await prisma.group.findMany({
+      where: {
+        shop: session.shop,
+        id: {
+          in: groupIds,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    const validGroupIds = new Set(validGroups.map((group) => group.id));
+
+    const hasInvalidGroup = groupIds.some(
+      (groupId) => !validGroupIds.has(groupId),
+    );
+
+    if (hasInvalidGroup) {
+      return {
+        success: false,
+        errors: {
+          groups: "One or more selected groups are invalid.",
+        },
+        values: {
+          question,
+          answer,
+          categoryId,
+          status,
+          sortOrder: sortOrderValue,
+          groupIds,
         },
       };
     }
@@ -223,6 +299,11 @@ export async function action({ request, params }) {
       data: {
         shop: session.shop,
         ...data,
+        groups: {
+          create: groupIds.map((groupId) => ({
+            groupId,
+          })),
+        },
       },
     });
 
@@ -232,6 +313,7 @@ export async function action({ request, params }) {
     console.log("QUESTION:", faq.question);
     console.log("CATEGORY ID:", faq.categoryId);
     console.log("STATUS:", faq.status);
+    console.log("GROUP IDS:", groupIds);
 
     return redirect("/app/faqs");
   }
@@ -252,11 +334,30 @@ export async function action({ request, params }) {
     };
   }
 
-  const updatedFaq = await prisma.faq.update({
-    where: {
-      id: existingFaq.id,
-    },
-    data,
+  const updatedFaq = await prisma.$transaction(async (tx) => {
+    const faq = await tx.faq.update({
+      where: {
+        id: existingFaq.id,
+      },
+      data,
+    });
+
+    await tx.faqGroup.deleteMany({
+      where: {
+        faqId: existingFaq.id,
+      },
+    });
+
+    if (groupIds.length > 0) {
+      await tx.faqGroup.createMany({
+        data: groupIds.map((groupId) => ({
+          faqId: existingFaq.id,
+          groupId,
+        })),
+      });
+    }
+
+    return faq;
   });
 
   console.log("========== FAQ UPDATED ==========");
@@ -265,12 +366,14 @@ export async function action({ request, params }) {
   console.log("QUESTION:", updatedFaq.question);
   console.log("CATEGORY ID:", updatedFaq.categoryId);
   console.log("STATUS:", updatedFaq.status);
+  console.log("GROUP IDS:", groupIds);
 
   return redirect("/app/faqs");
 }
 
 export default function FAQForm() {
-  const { faq, categories, isNew } = useLoaderData();
+  const { faq, categories, groups, selectedGroupIds, isNew } = useLoaderData();
+
   const actionData = useActionData();
   const navigation = useNavigation();
   const submit = useSubmit();
@@ -285,6 +388,7 @@ export default function FAQForm() {
     categoryId: faq.categoryId || "",
     status: faq.status || "draft",
     sortOrder: faq.sortOrder ?? 0,
+    groupIds: selectedGroupIds,
   };
 
   function handleDelete() {
@@ -363,13 +467,38 @@ export default function FAQForm() {
               <s-text tone="critical">{errors.categoryId}</s-text>
             ) : null}
 
+            <s-stack direction="block" gap="small">
+              <s-heading>Groups</s-heading>
+
+              {groups.length === 0 ? (
+                <s-text color="subdued">
+                  No groups have been created yet.
+                </s-text>
+              ) : (
+                <s-stack direction="block" gap="small">
+                  {groups.map((group) => (
+                    <s-checkbox
+                      key={group.id}
+                      name="groupIds"
+                      value={group.id}
+                      label={group.name}
+                      checked={values.groupIds.includes(group.id)}
+                    />
+                  ))}
+                </s-stack>
+              )}
+
+              {errors.groups ? (
+                <s-text tone="critical">{errors.groups}</s-text>
+              ) : null}
+            </s-stack>
+
             <s-select
               name="status"
               label="Status"
               value={values.status || "draft"}
             >
               <s-option value="draft">Draft</s-option>
-
               <s-option value="published">Published</s-option>
             </s-select>
 
