@@ -1,19 +1,31 @@
 .faqflow-editor {
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.faqflow-editor *,
+.faqflow-editor *::before,
+.faqflow-editor *::after {
+  box-sizing: border-box;
 }
 
 .faqflow-editor__label {
   display: block;
-  margin-bottom: 8px;
+  margin: 0 0 8px;
   font-size: 14px;
   font-weight: 600;
   line-height: 1.4;
+  color: inherit;
 }
 
 .faqflow-editor__toolbar {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
+  width: 100%;
+  min-height: 48px;
   padding: 8px;
   border: 1px solid rgba(0, 0, 0, 0.18);
   border-bottom: 0;
@@ -22,21 +34,36 @@
 }
 
 .faqflow-editor__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: auto;
   min-width: 34px;
+  height: 32px;
   min-height: 32px;
+  margin: 0;
   padding: 5px 9px;
   border: 1px solid rgba(0, 0, 0, 0.18);
   border-radius: 5px;
   background: transparent;
   color: inherit;
   cursor: pointer;
-  font: inherit;
+  font-family: inherit;
   font-size: 13px;
   font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .faqflow-editor__button:hover {
   background: rgba(0, 0, 0, 0.06);
+}
+
+.faqflow-editor__button:active {
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .faqflow-editor__button:focus-visible {
@@ -53,16 +80,25 @@
 }
 
 .faqflow-editor__content {
+  display: block;
+  width: 100%;
+  max-width: 100%;
   min-height: 220px;
+  margin: 0;
   padding: 12px 14px;
   border: 1px solid rgba(0, 0, 0, 0.18);
   border-radius: 0 0 6px 6px;
   background: transparent;
   color: inherit;
-  font: inherit;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 400;
   line-height: 1.55;
+  text-align: left;
   overflow-wrap: anywhere;
+  word-break: break-word;
   outline: none;
+  resize: vertical;
 }
 
 .faqflow-editor__content:focus {
@@ -91,12 +127,44 @@
   margin: 0 0 12px;
 }
 
+.faqflow-editor__content p:last-child {
+  margin-bottom: 0;
+}
+
 .faqflow-editor__content ul,
 .faqflow-editor__content ol {
   margin: 0 0 12px;
   padding-left: 24px;
 }
 
+.faqflow-editor__content ul:last-child,
+.faqflow-editor__content ol:last-child {
+  margin-bottom: 0;
+}
+
+.faqflow-editor__content li {
+  margin: 2px 0;
+}
+
 .faqflow-editor__content a {
+  color: inherit;
   text-decoration: underline;
+}
+
+@media (max-width: 600px) {
+  .faqflow-editor__toolbar {
+    gap: 5px;
+    padding: 7px;
+  }
+
+  .faqflow-editor__button {
+    min-width: 32px;
+    height: 32px;
+    padding: 5px 8px;
+  }
+
+  .faqflow-editor__content {
+    min-height: 200px;
+    padding: 10px 12px;
+  }
 }
