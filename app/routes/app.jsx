@@ -30,6 +30,7 @@ export default function App() {
         <s-link href="/app">Home</s-link>
         <s-link href="/app/faqs">FAQs</s-link>
         <s-link href="/app/categories">Categories</s-link>
+        <s-link href="/app/groups">Groups</s-link>
       </s-app-nav>
 
       {isLoading ? <PageLoading /> : <Outlet />}
