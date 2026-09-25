@@ -1,74 +1,79 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 
-import "../styles/rich-text-editor.css";
+function normalizeHtml(value) {
+  return (value || "").trim();
+}
 
-const toolbarItems = [
-  { command: "bold", label: "Bold", icon: "B" },
-  { command: "italic", label: "Italic", icon: "I" },
-  { command: "underline", label: "Underline", icon: "U" },
-  {
-    command: "insertUnorderedList",
-    label: "Bulleted list",
-    icon: "•",
-  },
-  {
-    command: "insertOrderedList",
-    label: "Numbered list",
-    icon: "1.",
-  },
-];
-
-function RichTextEditor({
+export default function RichTextEditor({
   name,
   label,
-  value,
+  value = "",
   error,
-  required = false,
   placeholder = "",
-  onChange,
 }) {
   const editorRef = useRef(null);
-  const hiddenInputRef = useRef(null);
+  const initializedRef = useRef(false);
+  const [html, setHtml] = useState(normalizeHtml(value));
 
   useEffect(() => {
-    const nextValue = value || "";
+    const editor = editorRef.current;
 
-    if (!editorRef.current) {
+    if (!editor) {
       return;
     }
 
-    if (!editorRef.current.matches(":focus")) {
-      if (editorRef.current.innerHTML !== nextValue) {
-        editorRef.current.innerHTML = nextValue;
-      }
+    const nextValue = normalizeHtml(value);
 
-      if (hiddenInputRef.current) {
-        hiddenInputRef.current.value = nextValue;
-      }
+    if (!initializedRef.current) {
+      editor.innerHTML = nextValue;
+      initializedRef.current = true;
+      setHtml(nextValue);
+      return;
+    }
+
+    const currentValue = normalizeHtml(editor.innerHTML);
+
+    if (nextValue !== currentValue) {
+      editor.innerHTML = nextValue;
+      setHtml(nextValue);
     }
   }, [value]);
 
-  function updateValue(nextHtml) {
-    if (hiddenInputRef.current) {
-      hiddenInputRef.current.value = nextHtml;
+  const syncEditor = () => {
+    const editor = editorRef.current;
+
+    if (!editor) {
+      return;
     }
 
-    onChange?.(nextHtml);
-  }
+    setHtml(editor.innerHTML);
+  };
 
-  function runCommand(command) {
-    editorRef.current?.focus();
+  const executeCommand = (command, commandValue = null) => {
+    const editor = editorRef.current;
 
-    document.execCommand(command, false);
+    if (!editor) {
+      return;
+    }
 
-    updateValue(editorRef.current?.innerHTML || "");
-  }
+    editor.focus();
 
-  function addLink() {
-    editorRef.current?.focus();
+    document.execCommand(command, false, commandValue);
 
-    const url = window.prompt("Enter the link URL:");
+    syncEditor();
+  };
+
+  const handleLink = () => {
+    const editor = editorRef.current;
+
+    if (!editor) {
+      return;
+    }
+
+    editor.focus();
+
+    const url = window.prompt("Enter URL");
 
     if (!url) {
       return;
@@ -76,46 +81,87 @@ function RichTextEditor({
 
     document.execCommand("createLink", false, url);
 
-    updateValue(editorRef.current?.innerHTML || "");
-  }
+    syncEditor();
+  };
 
-  function handleInput(event) {
-    updateValue(event.currentTarget.innerHTML);
-  }
+  const handleInput = () => {
+    syncEditor();
+  };
+
+  const handlePaste = (event) => {
+    event.preventDefault();
+
+    const text = event.clipboardData?.getData("text/plain") || "";
+
+    document.execCommand("insertText", false, text);
+
+    syncEditor();
+  };
 
   return (
     <div className="faqflow-editor">
       <label className="faqflow-editor__label">
         {label}
-        {required ? <span aria-hidden="true"> *</span> : null}
+        <span aria-hidden="true"> *</span>
       </label>
 
-      <div
-        className="faqflow-editor__toolbar"
-        role="toolbar"
-        aria-label={`${label} formatting`}
-      >
-        {toolbarItems.map((item) => (
-          <button
-            key={item.command}
-            type="button"
-            className={`faqflow-editor__button faqflow-editor__button--${item.command}`}
-            aria-label={item.label}
-            title={item.label}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => runCommand(item.command)}
-          >
-            {item.icon}
-          </button>
-        ))}
+      <div className="faqflow-editor__toolbar">
+        <button
+          type="button"
+          className="faqflow-editor__button"
+          onClick={() => executeCommand("bold")}
+          aria-label="Bold"
+          title="Bold"
+        >
+          B
+        </button>
+
+        <button
+          type="button"
+          className="faqflow-editor__button faqflow-editor__button--italic"
+          onClick={() => executeCommand("italic")}
+          aria-label="Italic"
+          title="Italic"
+        >
+          I
+        </button>
+
+        <button
+          type="button"
+          className="faqflow-editor__button faqflow-editor__button--underline"
+          onClick={() => executeCommand("underline")}
+          aria-label="Underline"
+          title="Underline"
+        >
+          U
+        </button>
 
         <button
           type="button"
           className="faqflow-editor__button"
-          aria-label="Add link"
-          title="Add link"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={addLink}
+          onClick={() => executeCommand("insertUnorderedList")}
+          aria-label="Bullet list"
+          title="Bullet list"
+        >
+          •
+        </button>
+
+        <button
+          type="button"
+          className="faqflow-editor__button"
+          onClick={() => executeCommand("insertOrderedList")}
+          aria-label="Numbered list"
+          title="Numbered list"
+        >
+          1.
+        </button>
+
+        <button
+          type="button"
+          className="faqflow-editor__button"
+          onClick={handleLink}
+          aria-label="Insert link"
+          title="Insert link"
         >
           Link
         </button>
@@ -123,30 +169,27 @@ function RichTextEditor({
 
       <div
         ref={editorRef}
-        className={`faqflow-editor__content ${
-          error ? "faqflow-editor__content--error" : ""
+        className={`faqflow-editor__content${
+          error ? " faqflow-editor__content--error" : ""
         }`}
         contentEditable
         role="textbox"
         aria-multiline="true"
         aria-label={label}
         data-placeholder={placeholder}
-        onInput={handleInput}
         suppressContentEditableWarning
+        onInput={handleInput}
+        onPaste={handlePaste}
       />
 
       <input
-        ref={hiddenInputRef}
+        className="faqflow-editor__hidden-input"
         type="hidden"
         name={name}
-        defaultValue={value || ""}
+        value={html}
       />
 
-      {error ? (
-        <div className="faqflow-editor__error" role="alert">
-          {error}
-        </div>
-      ) : null}
+      {error ? <div className="faqflow-editor__error">{error}</div> : null}
     </div>
   );
 }
@@ -156,17 +199,5 @@ RichTextEditor.propTypes = {
   label: PropTypes.string.isRequired,
   value: PropTypes.string,
   error: PropTypes.string,
-  required: PropTypes.bool,
   placeholder: PropTypes.string,
-  onChange: PropTypes.func,
 };
-
-RichTextEditor.defaultProps = {
-  value: "",
-  error: "",
-  required: false,
-  placeholder: "",
-  onChange: undefined,
-};
-
-export default RichTextEditor;
