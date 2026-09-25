@@ -123,6 +123,10 @@
     return template.content.textContent.replace(/\s+/g, " ").trim();
   }
 
+  function faqHtmlToSearchText(html) {
+    return faqHtmlToText(html).toLowerCase();
+  }
+
   function updateFaqJsonLd(faqs) {
     const existingScript = document.querySelector(
       'script[data-faqflow-jsonld="true"]',
@@ -186,18 +190,16 @@
     }
   }
 
-  function faqHtmlToSearchText(html) {
-    return faqHtmlToText(html).toLowerCase();
-  }
-
   async function loadFaqs(block) {
     const statusElement = block.querySelector("[data-faqflow-status]");
     const listElement = block.querySelector("[data-faqflow-list]");
     const categoriesElement = block.querySelector("[data-faqflow-categories]");
+    const groupsElement = block.querySelector("[data-faqflow-groups]");
     const searchElement = block.querySelector("[data-faqflow-search]");
 
     let faqData = null;
     let activeCategory = block.dataset.defaultCategory || "";
+    let activeGroup = block.dataset.defaultGroup || "";
 
     const allowMultipleOpen = block.dataset.multipleOpen === "true";
 
@@ -212,6 +214,33 @@
       statusElement.hidden = hidden;
     }
 
+    function getGroupSortOrder(faq, groupId) {
+      const group = faq.groups?.find((item) => item.id === groupId);
+
+      return group ? Number(group.sortOrder) || 0 : Number.MAX_SAFE_INTEGER;
+    }
+
+    function sortFaqsByActiveGroup(faqs) {
+      if (!activeGroup) {
+        return [...faqs];
+      }
+
+      return [...faqs].sort((a, b) => {
+        const aOrder = getGroupSortOrder(a, activeGroup);
+        const bOrder = getGroupSortOrder(b, activeGroup);
+
+        if (aOrder !== bOrder) {
+          return aOrder - bOrder;
+        }
+
+        if (a.sortOrder !== b.sortOrder) {
+          return a.sortOrder - b.sortOrder;
+        }
+
+        return a.question.localeCompare(b.question);
+      });
+    }
+
     function renderFaqs() {
       if (!listElement || !faqData) {
         return;
@@ -223,6 +252,9 @@
         const matchesCategory =
           !activeCategory || faq.category?.id === activeCategory;
 
+        const matchesGroup =
+          !activeGroup || faq.groups?.some((group) => group.id === activeGroup);
+
         const questionText = faq.question.toLowerCase();
         const answerText = faqHtmlToSearchText(faq.answer);
 
@@ -231,19 +263,21 @@
           questionText.includes(searchTerm) ||
           answerText.includes(searchTerm);
 
-        return matchesCategory && matchesSearch;
+        return matchesCategory && matchesGroup && matchesSearch;
       });
+
+      const orderedFaqs = sortFaqsByActiveGroup(filteredFaqs);
 
       listElement.replaceChildren();
 
-      if (!filteredFaqs.length) {
+      if (!orderedFaqs.length) {
         setStatus(emptyMessage, false);
         return;
       }
 
       setStatus("", true);
 
-      filteredFaqs.forEach((faq) => {
+      orderedFaqs.forEach((faq) => {
         const item = document.createElement("details");
 
         item.className = "faqflow__item";
@@ -339,6 +373,58 @@
       });
     }
 
+    function renderGroups() {
+      if (!groupsElement || block.dataset.showGroups !== "true") {
+        return;
+      }
+
+      groupsElement.replaceChildren();
+
+      const allButton = document.createElement("button");
+
+      allButton.type = "button";
+      allButton.className = "faqflow__group";
+      allButton.textContent = "All";
+      allButton.dataset.groupId = "";
+      allButton.setAttribute("aria-pressed", String(!activeGroup));
+
+      if (!activeGroup) {
+        allButton.classList.add("is-active");
+      }
+
+      allButton.addEventListener("click", () => {
+        activeGroup = "";
+
+        renderGroups();
+        renderFaqs();
+      });
+
+      groupsElement.appendChild(allButton);
+
+      faqData.groups.forEach((group) => {
+        const button = document.createElement("button");
+
+        button.type = "button";
+        button.className = "faqflow__group";
+        button.textContent = group.name;
+        button.dataset.groupId = group.id;
+        button.setAttribute("aria-pressed", String(activeGroup === group.id));
+
+        if (activeGroup === group.id) {
+          button.classList.add("is-active");
+        }
+
+        button.addEventListener("click", () => {
+          activeGroup = group.id;
+
+          renderGroups();
+          renderFaqs();
+        });
+
+        groupsElement.appendChild(button);
+      });
+    }
+
     try {
       setStatus("Loading FAQs...", false);
 
@@ -361,6 +447,18 @@
 
       faqData = data;
 
+      if (!Array.isArray(faqData.faqs)) {
+        faqData.faqs = [];
+      }
+
+      if (!Array.isArray(faqData.categories)) {
+        faqData.categories = [];
+      }
+
+      if (!Array.isArray(faqData.groups)) {
+        faqData.groups = [];
+      }
+
       if (block.dataset.enableJsonLd === "true") {
         updateFaqJsonLd(faqData.faqs);
       }
@@ -373,7 +471,16 @@
         activeCategory = defaultCategory?.id || "";
       }
 
+      if (activeGroup) {
+        const defaultGroup = faqData.groups.find(
+          (group) => group.slug === activeGroup,
+        );
+
+        activeGroup = defaultGroup?.id || "";
+      }
+
       renderCategories();
+      renderGroups();
       renderFaqs();
     } catch (error) {
       console.error("FAQFlow:", error);
