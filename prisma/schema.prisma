@@ -62,6 +62,8 @@ model Faq {
 
   category Category?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   groups   FaqGroup[]
+  products    FaqProduct[]
+  collections FaqCollection[]
 
   @@index([shop])
   @@index([categoryId])
@@ -95,4 +97,30 @@ model FaqGroup {
   @@id([faqId, groupId])
   @@index([groupId, sortOrder])
   @@index([faqId])
+}
+
+model FaqProduct {
+  faqId       String
+  productGid  String
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  faq         Faq      @relation(fields: [faqId], references: [id], onDelete: Cascade)
+
+  @@id([faqId, productGid])
+  @@index([productGid])
+  @@index([faqId, sortOrder])
+}
+
+model FaqCollection {
+  faqId         String
+  collectionGid String
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  faq           Faq      @relation(fields: [faqId], references: [id], onDelete: Cascade)
+
+  @@id([faqId, collectionGid])
+  @@index([collectionGid])
+  @@index([faqId, sortOrder])
 }
