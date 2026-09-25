@@ -6,6 +6,8 @@ import {
   useNavigation,
   useSubmit,
 } from "react-router";
+import { useState } from "react";
+import { useAppBridge } from "@shopify/app-bridge-react";
 
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -55,6 +57,8 @@ export async function loader({ request, params }) {
       categories,
       groups,
       selectedGroupIds: [],
+      selectedProductGids: [],
+      selectedCollectionGids: [],
       isNew: true,
     };
   }
@@ -68,6 +72,24 @@ export async function loader({ request, params }) {
       groups: {
         select: {
           groupId: true,
+        },
+      },
+      products: {
+        select: {
+          productGid: true,
+          sortOrder: true,
+        },
+        orderBy: {
+          sortOrder: "asc",
+        },
+      },
+      collections: {
+        select: {
+          collectionGid: true,
+          sortOrder: true,
+        },
+        orderBy: {
+          sortOrder: "asc",
         },
       },
     },
@@ -84,6 +106,10 @@ export async function loader({ request, params }) {
     categories,
     groups,
     selectedGroupIds: faq.groups.map((group) => group.groupId),
+    selectedProductGids: faq.products.map((product) => product.productGid),
+    selectedCollectionGids: faq.collections.map(
+      (collection) => collection.collectionGid,
+    ),
     isNew: false,
   };
 }
@@ -145,6 +171,24 @@ export async function action({ request, params }) {
     ),
   ];
 
+  const productGids = [
+    ...new Set(
+      formData
+        .getAll("productGids")
+        .map((value) => value.toString().trim())
+        .filter(Boolean),
+    ),
+  ];
+
+  const collectionGids = [
+    ...new Set(
+      formData
+        .getAll("collectionGids")
+        .map((value) => value.toString().trim())
+        .filter(Boolean),
+    ),
+  ];
+
   const categoryId =
     !rawCategoryId || rawCategoryId === "Uncategorized" ? "" : rawCategoryId;
 
@@ -183,6 +227,8 @@ export async function action({ request, params }) {
         status,
         sortOrder: sortOrderValue,
         groupIds,
+        productGids,
+        collectionGids,
       },
     };
   }
@@ -208,6 +254,8 @@ export async function action({ request, params }) {
           status,
           sortOrder: sortOrderValue,
           groupIds,
+          productGids,
+          collectionGids,
         },
       };
     }
@@ -245,6 +293,8 @@ export async function action({ request, params }) {
           status,
           sortOrder: sortOrderValue,
           groupIds,
+          productGids,
+          collectionGids,
         },
       };
     }
@@ -259,17 +309,43 @@ export async function action({ request, params }) {
   };
 
   if (params.id === "new") {
-    await prisma.faq.create({
-      data: {
-        shop: session.shop,
-        ...data,
-        groups: {
-          create: groupIds.map((groupId, index) => ({
+    await prisma.$transaction(async (tx) => {
+      const faq = await tx.faq.create({
+        data: {
+          shop: session.shop,
+          ...data,
+        },
+      });
+
+      if (groupIds.length > 0) {
+        await tx.faqGroup.createMany({
+          data: groupIds.map((groupId, index) => ({
+            faqId: faq.id,
             groupId,
             sortOrder: index,
           })),
-        },
-      },
+        });
+      }
+
+      if (productGids.length > 0) {
+        await tx.faqProduct.createMany({
+          data: productGids.map((productGid, index) => ({
+            faqId: faq.id,
+            productGid,
+            sortOrder: index,
+          })),
+        });
+      }
+
+      if (collectionGids.length > 0) {
+        await tx.faqCollection.createMany({
+          data: collectionGids.map((collectionGid, index) => ({
+            faqId: faq.id,
+            collectionGid,
+            sortOrder: index,
+          })),
+        });
+      }
     });
 
     return redirect("/app/faqs");
@@ -303,11 +379,43 @@ export async function action({ request, params }) {
       },
     });
 
+    await tx.faqProduct.deleteMany({
+      where: {
+        faqId: existingFaq.id,
+      },
+    });
+
+    await tx.faqCollection.deleteMany({
+      where: {
+        faqId: existingFaq.id,
+      },
+    });
+
     if (groupIds.length > 0) {
       await tx.faqGroup.createMany({
         data: groupIds.map((groupId, index) => ({
           faqId: existingFaq.id,
           groupId,
+          sortOrder: index,
+        })),
+      });
+    }
+
+    if (productGids.length > 0) {
+      await tx.faqProduct.createMany({
+        data: productGids.map((productGid, index) => ({
+          faqId: existingFaq.id,
+          productGid,
+          sortOrder: index,
+        })),
+      });
+    }
+
+    if (collectionGids.length > 0) {
+      await tx.faqCollection.createMany({
+        data: collectionGids.map((collectionGid, index) => ({
+          faqId: existingFaq.id,
+          collectionGid,
           sortOrder: index,
         })),
       });
@@ -318,7 +426,24 @@ export async function action({ request, params }) {
 }
 
 export default function FAQForm() {
-  const { faq, categories, groups, selectedGroupIds, isNew } = useLoaderData();
+  const {
+    faq,
+    categories,
+    groups,
+    selectedGroupIds,
+    selectedProductGids,
+    selectedCollectionGids,
+    isNew,
+  } = useLoaderData();
+
+  const shopify = useAppBridge();
+
+  const [productSelections, setProductSelections] =
+    useState(selectedProductGids);
+
+  const [collectionSelections, setCollectionSelections] = useState(
+    selectedCollectionGids,
+  );
 
   const actionData = useActionData();
   const navigation = useNavigation();
@@ -335,6 +460,8 @@ export default function FAQForm() {
     status: faq.status || "draft",
     sortOrder: faq.sortOrder ?? 0,
     groupIds: selectedGroupIds,
+    productGids: selectedProductGids,
+    collectionGids: selectedCollectionGids,
   };
 
   function handleDelete() {
@@ -356,6 +483,55 @@ export default function FAQForm() {
     );
   }
 
+  const handleSelectProducts = async () => {
+    const selected = await shopify.resourcePicker({
+      type: "product",
+      action: "select",
+      multiple: true,
+      selectionIds: productSelections.map((id) => ({
+        id,
+      })),
+      filter: {
+        variants: false,
+      },
+    });
+
+    if (selected === undefined) {
+      return;
+    }
+
+    setProductSelections(selected.map((product) => product.id));
+  };
+
+  const handleRemoveProduct = (productGid) => {
+    setProductSelections((current) =>
+      current.filter((id) => id !== productGid),
+    );
+  };
+
+  const handleSelectCollections = async () => {
+    const selected = await shopify.resourcePicker({
+      type: "collection",
+      action: "select",
+      multiple: true,
+      selectionIds: collectionSelections.map((id) => ({
+        id,
+      })),
+    });
+
+    if (selected === undefined) {
+      return;
+    }
+
+    setCollectionSelections(selected.map((collection) => collection.id));
+  };
+
+  const handleRemoveCollection = (collectionGid) => {
+    setCollectionSelections((current) =>
+      current.filter((id) => id !== collectionGid),
+    );
+  };
+
   return (
     <s-page heading={isNew ? "Create FAQ" : "Edit FAQ"}>
       <s-link slot="breadcrumb-actions" href="/app/faqs">
@@ -374,6 +550,24 @@ export default function FAQForm() {
       ) : null}
 
       <Form method="post">
+        {productSelections.map((productGid) => (
+          <input
+            key={productGid}
+            type="hidden"
+            name="productGids"
+            value={productGid}
+          />
+        ))}
+
+        {collectionSelections.map((collectionGid) => (
+          <input
+            key={collectionGid}
+            type="hidden"
+            name="collectionGids"
+            value={collectionGid}
+          />
+        ))}
+
         <s-section heading="FAQ Details">
           <s-stack direction="block" gap="base">
             <s-text-field
@@ -438,7 +632,116 @@ export default function FAQForm() {
                 <s-text tone="critical">{errors.groups}</s-text>
               ) : null}
             </s-stack>
+          </s-stack>
+        </s-section>
 
+        <s-section heading="Targeting">
+          <s-stack direction="block" gap="base">
+            <s-text>
+              Control where this FAQ appears by assigning it to specific Shopify
+              products or collections.
+            </s-text>
+
+            <s-box>
+              <s-stack direction="block" gap="small">
+                <s-heading>Products</s-heading>
+
+                <s-text>Show this FAQ only on selected products.</s-text>
+
+                <s-button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleSelectProducts}
+                >
+                  {productSelections.length > 0
+                    ? "Edit selected products"
+                    : "Select products"}
+                </s-button>
+
+                {productSelections.length > 0 ? (
+                  <s-stack direction="block" gap="small">
+                    <s-text>
+                      {productSelections.length} product
+                      {productSelections.length === 1 ? "" : "s"} selected.
+                    </s-text>
+
+                    {productSelections.map((productGid) => (
+                      <s-stack
+                        key={productGid}
+                        direction="inline"
+                        gap="small"
+                        alignItems="center"
+                      >
+                        <s-text>{productGid}</s-text>
+
+                        <s-button
+                          type="button"
+                          variant="tertiary"
+                          onClick={() => handleRemoveProduct(productGid)}
+                        >
+                          Remove
+                        </s-button>
+                      </s-stack>
+                    ))}
+                  </s-stack>
+                ) : (
+                  <s-text color="subdued">No products selected.</s-text>
+                )}
+              </s-stack>
+            </s-box>
+
+            <s-box>
+              <s-stack direction="block" gap="small">
+                <s-heading>Collections</s-heading>
+
+                <s-text>Show this FAQ only on selected collections.</s-text>
+
+                <s-button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleSelectCollections}
+                >
+                  {collectionSelections.length > 0
+                    ? "Edit selected collections"
+                    : "Select collections"}
+                </s-button>
+
+                {collectionSelections.length > 0 ? (
+                  <s-stack direction="block" gap="small">
+                    <s-text>
+                      {collectionSelections.length} collection
+                      {collectionSelections.length === 1 ? "" : "s"} selected.
+                    </s-text>
+
+                    {collectionSelections.map((collectionGid) => (
+                      <s-stack
+                        key={collectionGid}
+                        direction="inline"
+                        gap="small"
+                        alignItems="center"
+                      >
+                        <s-text>{collectionGid}</s-text>
+
+                        <s-button
+                          type="button"
+                          variant="tertiary"
+                          onClick={() => handleRemoveCollection(collectionGid)}
+                        >
+                          Remove
+                        </s-button>
+                      </s-stack>
+                    ))}
+                  </s-stack>
+                ) : (
+                  <s-text color="subdued">No collections selected.</s-text>
+                )}
+              </s-stack>
+            </s-box>
+          </s-stack>
+        </s-section>
+
+        <s-section heading="Publishing">
+          <s-stack direction="block" gap="base">
             <s-select
               name="status"
               label="Status"
