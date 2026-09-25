@@ -33,6 +33,7 @@ export async function loader({ request, params }) {
         description: "",
         sortOrder: 0,
       },
+      groupFaqs: [],
       isNew: true,
     };
   }
@@ -41,6 +42,35 @@ export async function loader({ request, params }) {
     where: {
       id: params.id,
       shop: session.shop,
+    },
+    include: {
+      faqs: {
+        include: {
+          faq: {
+            select: {
+              id: true,
+              question: true,
+              status: true,
+              sortOrder: true,
+            },
+          },
+        },
+        orderBy: [
+          {
+            sortOrder: "asc",
+          },
+          {
+            faq: {
+              sortOrder: "asc",
+            },
+          },
+          {
+            faq: {
+              createdAt: "asc",
+            },
+          },
+        ],
+      },
     },
   });
 
@@ -51,7 +81,19 @@ export async function loader({ request, params }) {
   }
 
   return {
-    group,
+    group: {
+      id: group.id,
+      name: group.name,
+      slug: group.slug,
+      description: group.description || "",
+      sortOrder: group.sortOrder,
+    },
+    groupFaqs: group.faqs.map((item) => ({
+      faqId: item.faqId,
+      question: item.faq.question,
+      status: item.faq.status,
+      sortOrder: item.sortOrder,
+    })),
     isNew: false,
   };
 }
@@ -85,6 +127,97 @@ export async function action({ request, params }) {
     });
 
     return redirect("/app/groups");
+  }
+
+  if (intent === "save-order") {
+    if (!params.id || params.id === "new") {
+      return {
+        success: false,
+        error: "Invalid group.",
+      };
+    }
+
+    const existingGroup = await prisma.group.findFirst({
+      where: {
+        id: params.id,
+        shop: session.shop,
+      },
+    });
+
+    if (!existingGroup) {
+      return {
+        success: false,
+        error: "Group not found.",
+      };
+    }
+
+    const faqIds = formData
+      .getAll("faqIds")
+      .map((value) => value.toString().trim())
+      .filter(Boolean);
+
+    const sortOrders = formData
+      .getAll("sortOrders")
+      .map((value) => Number.parseInt(value.toString(), 10));
+
+    if (faqIds.length !== sortOrders.length) {
+      return {
+        success: false,
+        error: "Invalid FAQ ordering data.",
+      };
+    }
+
+    const faqGroups = await prisma.faqGroup.findMany({
+      where: {
+        groupId: existingGroup.id,
+        faq: {
+          shop: session.shop,
+        },
+      },
+      select: {
+        faqId: true,
+      },
+    });
+
+    const validFaqIds = new Set(faqGroups.map((item) => item.faqId));
+
+    const hasInvalidFaq = faqIds.some((faqId) => !validFaqIds.has(faqId));
+
+    if (hasInvalidFaq) {
+      return {
+        success: false,
+        error: "One or more FAQs do not belong to this group.",
+      };
+    }
+
+    const hasInvalidSortOrder = sortOrders.some(
+      (sortOrder) => !Number.isInteger(sortOrder) || sortOrder < 0,
+    );
+
+    if (hasInvalidSortOrder) {
+      return {
+        success: false,
+        error: "Sort order must be a non-negative number.",
+      };
+    }
+
+    await prisma.$transaction(
+      faqIds.map((faqId, index) =>
+        prisma.faqGroup.update({
+          where: {
+            faqId_groupId: {
+              faqId,
+              groupId: existingGroup.id,
+            },
+          },
+          data: {
+            sortOrder: sortOrders[index],
+          },
+        }),
+      ),
+    );
+
+    return redirect(`/app/groups/${existingGroup.id}`);
   }
 
   if (intent !== "save") {
@@ -190,6 +323,7 @@ export async function action({ request, params }) {
     await prisma.group.update({
       where: {
         id: existingGroupForUpdate.id,
+        shop: session.shop,
       },
       data: {
         name,
@@ -204,7 +338,7 @@ export async function action({ request, params }) {
 }
 
 export default function GroupEditor() {
-  const { group, isNew } = useLoaderData();
+  const { group, groupFaqs, isNew } = useLoaderData();
   const actionData = useActionData();
 
   const navigation = useNavigation();
@@ -309,6 +443,59 @@ export default function GroupEditor() {
           </s-stack>
         </s-section>
       </Form>
+
+      {!isNew ? (
+        <s-section heading="FAQs in this Group">
+          {groupFaqs.length === 0 ? (
+            <s-text color="subdued">
+              No FAQs have been assigned to this group yet.
+            </s-text>
+          ) : (
+            <Form method="post">
+              <input type="hidden" name="intent" value="save-order" />
+
+              <s-stack direction="block" gap="base">
+                {groupFaqs.map((faq) => (
+                  <s-stack
+                    key={faq.faqId}
+                    direction="inline"
+                    gap="base"
+                    alignItems="center"
+                  >
+                    <input type="hidden" name="faqIds" value={faq.faqId} />
+
+                    <s-text>{faq.question}</s-text>
+
+                    <s-number-field
+                      name="sortOrders"
+                      label="Order"
+                      value={String(faq.sortOrder)}
+                      min="0"
+                      step="1"
+                    />
+
+                    <s-badge>{faq.status}</s-badge>
+                  </s-stack>
+                ))}
+
+                {actionData?.error ? (
+                  <s-text tone="critical">{actionData.error}</s-text>
+                ) : null}
+
+                <s-stack direction="inline" justifyContent="end" gap="small">
+                  <s-button
+                    type="submit"
+                    variant="primary"
+                    loading={isSubmitting}
+                  >
+                    {isSubmitting ? "Saving..." : "Save FAQ order"}
+                  </s-button>
+                </s-stack>
+              </s-stack>
+            </Form>
+          )}
+        </s-section>
+      ) : null}
     </s-page>
   );
 }
