@@ -18,7 +18,7 @@ export async function loader({ request }) {
 
   const shop = session.shop;
 
-  const [faqs, categories] = await Promise.all([
+  const [faqs, categories, groups] = await Promise.all([
     prisma.faq.findMany({
       where: {
         shop,
@@ -26,6 +26,11 @@ export async function loader({ request }) {
       },
       include: {
         category: true,
+        groups: {
+          include: {
+            group: true,
+          },
+        },
       },
       orderBy: [
         {
@@ -50,16 +55,32 @@ export async function loader({ request }) {
         },
       ],
     }),
+
+    prisma.group.findMany({
+      where: {
+        shop,
+      },
+      orderBy: [
+        {
+          sortOrder: "asc",
+        },
+        {
+          name: "asc",
+        },
+      ],
+    }),
   ]);
 
   return Response.json({
     success: true,
+
     faqs: faqs.map((faq) => ({
       id: faq.id,
       question: faq.question,
       answer: faq.answer,
       status: faq.status,
       sortOrder: faq.sortOrder,
+
       category: faq.category
         ? {
             id: faq.category.id,
@@ -67,12 +88,35 @@ export async function loader({ request }) {
             slug: faq.category.slug,
           }
         : null,
+
+      groups: faq.groups
+        .sort((a, b) => {
+          if (a.sortOrder !== b.sortOrder) {
+            return a.sortOrder - b.sortOrder;
+          }
+
+          return a.group.name.localeCompare(b.group.name);
+        })
+        .map((faqGroup) => ({
+          id: faqGroup.group.id,
+          name: faqGroup.group.name,
+          slug: faqGroup.group.slug,
+          sortOrder: faqGroup.sortOrder,
+        })),
     })),
+
     categories: categories.map((category) => ({
       id: category.id,
       name: category.name,
       slug: category.slug,
       sortOrder: category.sortOrder,
+    })),
+
+    groups: groups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      slug: group.slug,
+      sortOrder: group.sortOrder,
     })),
   });
 }
