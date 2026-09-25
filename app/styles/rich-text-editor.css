@@ -95,8 +95,11 @@
   font-weight: 400;
   line-height: 1.55;
   text-align: left;
+  overflow-x: hidden;
+  overflow-y: auto;
   overflow-wrap: anywhere;
   word-break: break-word;
+  white-space: normal;
   outline: none;
   resize: vertical;
 }
@@ -114,6 +117,11 @@
 
 .faqflow-editor__content--error {
   border-color: #d72c0d;
+}
+
+.faqflow-editor__content--error:focus {
+  border-color: #d72c0d;
+  box-shadow: 0 0 0 1px #d72c0d;
 }
 
 .faqflow-editor__error {
@@ -149,6 +157,29 @@
 .faqflow-editor__content a {
   color: inherit;
   text-decoration: underline;
+}
+
+.faqflow-editor__content strong,
+.faqflow-editor__content b {
+  font-weight: 700;
+}
+
+.faqflow-editor__content em,
+.faqflow-editor__content i {
+  font-style: italic;
+}
+
+.faqflow-editor__content u {
+  text-decoration: underline;
+}
+
+.faqflow-editor__content br {
+  display: block;
+  content: "";
+}
+
+.faqflow-editor__hidden-input {
+  display: none;
 }
 
 @media (max-width: 600px) {
