@@ -5,10 +5,22 @@
   data-faqflow
   data-show-search="{{ block.settings.show_search }}"
   data-show-categories="{{ block.settings.show_categories }}"
+  data-show-groups="{{ block.settings.show_groups }}"
   data-default-category="{{ block.settings.default_category | escape }}"
+  data-default-group="{{ block.settings.default_group | escape }}"
   data-multiple-open="{{ block.settings.multiple_open }}"
   data-empty-message="{{ block.settings.empty_message | escape }}"
   data-enable-json-ld="{{ block.settings.enable_json_ld }}"
+  data-category-style="{{ block.settings.category_style }}"
+  style="
+    --faqflow-max-width: {{ block.settings.content_width }}px;
+    --faqflow-heading-align: {{ block.settings.heading_alignment }};
+    --faqflow-accent-color: {{ block.settings.accent_color }};
+    --faqflow-question-color: {{ block.settings.question_color }};
+    --faqflow-answer-color: {{ block.settings.answer_color }};
+    --faqflow-border-radius: {{ block.settings.border_radius }}px;
+    --faqflow-border-width: {% if block.settings.show_borders %}1px{% else %}0px{% endif %};
+  "
 >
   <div class="faqflow__header">
     <h2 class="faqflow__heading">
@@ -35,6 +47,14 @@
         data-faqflow-search
       >
     </div>
+  {% endif %}
+
+  {% if block.settings.show_groups %}
+    <nav
+      class="faqflow__groups"
+      aria-label="FAQ groups"
+      data-faqflow-groups
+    ></nav>
   {% endif %}
 
   {% if block.settings.show_categories %}
@@ -82,6 +102,18 @@
       "id": "show_search",
       "label": "Show search",
       "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_groups",
+      "label": "Show groups",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "default_group",
+      "label": "Default group",
+      "info": "Enter a group slug, such as shipping. Leave blank to show all groups."
     },
     {
       "type": "checkbox",
