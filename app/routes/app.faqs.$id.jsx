@@ -264,8 +264,9 @@ export async function action({ request, params }) {
         shop: session.shop,
         ...data,
         groups: {
-          create: groupIds.map((groupId) => ({
+          create: groupIds.map((groupId, index) => ({
             groupId,
+            sortOrder: index,
           })),
         },
       },
@@ -304,9 +305,10 @@ export async function action({ request, params }) {
 
     if (groupIds.length > 0) {
       await tx.faqGroup.createMany({
-        data: groupIds.map((groupId) => ({
+        data: groupIds.map((groupId, index) => ({
           faqId: existingFaq.id,
           groupId,
+          sortOrder: index,
         })),
       });
     }
