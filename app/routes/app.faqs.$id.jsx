@@ -14,6 +14,8 @@ import prisma from "../db.server";
 import { faqHtmlToText, sanitizeFaqHtml } from "../utils/sanitizeHtml.server";
 import RichTextEditor from "../components/RichTextEditor";
 
+import "../styles/rich-text-editor.css";
+
 export async function loader({ request, params }) {
   const { session } = await authenticate.admin(request);
 
@@ -157,7 +159,6 @@ export async function action({ request, params }) {
   const rawAnswer = formData.get("answer")?.toString() || "";
 
   const answer = sanitizeFaqHtml(rawAnswer);
-
   const answerText = faqHtmlToText(answer);
 
   const rawCategoryId = formData.get("categoryId")?.toString().trim();
@@ -568,47 +569,54 @@ export default function FAQForm() {
           />
         ))}
 
-        <s-section heading="FAQ Details">
-          <s-stack direction="block" gap="base">
-            <s-text-field
-              name="question"
-              label="Question"
-              placeholder="Enter the frequently asked question"
-              value={values.question}
-              error={errors.question}
-              required
-              autocomplete="off"
-            />
+        <s-section heading={isNew ? "Create FAQ" : "FAQ Details"}>
+          <s-stack direction="block" gap="large">
+            <s-stack direction="block" gap="base">
+              <s-text-field
+                name="question"
+                label="Question"
+                placeholder="Enter the frequently asked question"
+                value={values.question}
+                error={errors.question}
+                required
+                autocomplete="off"
+              />
 
-            <RichTextEditor
-              name="answer"
-              label="Answer"
-              value={values.answer}
-              error={errors.answer}
-              required
-              placeholder="Write the answer to this question"
-            />
+              <RichTextEditor
+                name="answer"
+                label="Answer"
+                value={values.answer}
+                error={errors.answer}
+                placeholder="Write the answer to this question"
+              />
 
-            <s-select
-              name="categoryId"
-              label="Category"
-              value={values.categoryId || ""}
-            >
-              <s-option value="">Uncategorized</s-option>
+              <s-select
+                name="categoryId"
+                label="Category"
+                value={values.categoryId || ""}
+              >
+                <s-option value="">Uncategorized</s-option>
 
-              {categories.map((category) => (
-                <s-option key={category.id} value={category.id}>
-                  {category.name}
-                </s-option>
-              ))}
-            </s-select>
+                {categories.map((category) => (
+                  <s-option key={category.id} value={category.id}>
+                    {category.name}
+                  </s-option>
+                ))}
+              </s-select>
 
-            {errors.categoryId ? (
-              <s-text tone="critical">{errors.categoryId}</s-text>
-            ) : null}
+              {errors.categoryId ? (
+                <s-text tone="critical">{errors.categoryId}</s-text>
+              ) : null}
+            </s-stack>
 
-            <s-stack direction="block" gap="small">
+            <s-divider />
+
+            <s-stack direction="block" gap="base">
               <s-heading>Groups</s-heading>
+
+              <s-text color="subdued">
+                Assign this FAQ to one or more groups.
+              </s-text>
 
               {groups.length === 0 ? (
                 <s-text color="subdued">
@@ -632,156 +640,169 @@ export default function FAQForm() {
                 <s-text tone="critical">{errors.groups}</s-text>
               ) : null}
             </s-stack>
-          </s-stack>
-        </s-section>
 
-        <s-section heading="Targeting">
-          <s-stack direction="block" gap="base">
-            <s-text>
-              Control where this FAQ appears by assigning it to specific Shopify
-              products or collections.
-            </s-text>
+            <s-divider />
 
-            <s-box>
-              <s-stack direction="block" gap="small">
-                <s-heading>Products</s-heading>
+            <s-stack direction="block" gap="base">
+              <s-heading>Targeting</s-heading>
 
-                <s-text>Show this FAQ only on selected products.</s-text>
+              <s-text color="subdued">
+                Control where this FAQ appears by assigning it to specific
+                Shopify products or collections.
+              </s-text>
 
-                <s-button
-                  type="button"
-                  variant="secondary"
-                  onClick={handleSelectProducts}
-                >
-                  {productSelections.length > 0
-                    ? "Edit selected products"
-                    : "Select products"}
-                </s-button>
+              <s-stack direction="block" gap="base">
+                <s-stack direction="block" gap="small">
+                  <s-text emphasis="strong">Products</s-text>
 
-                {productSelections.length > 0 ? (
-                  <s-stack direction="block" gap="small">
-                    <s-text>
-                      {productSelections.length} product
-                      {productSelections.length === 1 ? "" : "s"} selected.
-                    </s-text>
+                  <s-text color="subdued">
+                    Show this FAQ only on selected products.
+                  </s-text>
 
-                    {productSelections.map((productGid) => (
-                      <s-stack
-                        key={productGid}
-                        direction="inline"
-                        gap="small"
-                        alignItems="center"
-                      >
-                        <s-text>{productGid}</s-text>
+                  <s-button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleSelectProducts}
+                  >
+                    {productSelections.length > 0
+                      ? "Edit selected products"
+                      : "Select products"}
+                  </s-button>
 
-                        <s-button
-                          type="button"
-                          variant="tertiary"
-                          onClick={() => handleRemoveProduct(productGid)}
+                  {productSelections.length > 0 ? (
+                    <s-stack direction="block" gap="small">
+                      <s-text>
+                        {productSelections.length} product
+                        {productSelections.length === 1 ? "" : "s"} selected.
+                      </s-text>
+
+                      {productSelections.map((productGid) => (
+                        <s-stack
+                          key={productGid}
+                          direction="inline"
+                          gap="small"
+                          alignItems="center"
                         >
-                          Remove
-                        </s-button>
-                      </s-stack>
-                    ))}
-                  </s-stack>
-                ) : (
-                  <s-text color="subdued">No products selected.</s-text>
-                )}
-              </s-stack>
-            </s-box>
+                          <s-text>{productGid}</s-text>
 
-            <s-box>
-              <s-stack direction="block" gap="small">
-                <s-heading>Collections</s-heading>
+                          <s-button
+                            type="button"
+                            variant="tertiary"
+                            onClick={() => handleRemoveProduct(productGid)}
+                          >
+                            Remove
+                          </s-button>
+                        </s-stack>
+                      ))}
+                    </s-stack>
+                  ) : (
+                    <s-text color="subdued">No products selected.</s-text>
+                  )}
+                </s-stack>
 
-                <s-text>Show this FAQ only on selected collections.</s-text>
+                <s-stack direction="block" gap="small">
+                  <s-text emphasis="strong">Collections</s-text>
 
-                <s-button
-                  type="button"
-                  variant="secondary"
-                  onClick={handleSelectCollections}
-                >
-                  {collectionSelections.length > 0
-                    ? "Edit selected collections"
-                    : "Select collections"}
-                </s-button>
+                  <s-text color="subdued">
+                    Show this FAQ only on selected collections.
+                  </s-text>
 
-                {collectionSelections.length > 0 ? (
-                  <s-stack direction="block" gap="small">
-                    <s-text>
-                      {collectionSelections.length} collection
-                      {collectionSelections.length === 1 ? "" : "s"} selected.
-                    </s-text>
+                  <s-button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleSelectCollections}
+                  >
+                    {collectionSelections.length > 0
+                      ? "Edit selected collections"
+                      : "Select collections"}
+                  </s-button>
 
-                    {collectionSelections.map((collectionGid) => (
-                      <s-stack
-                        key={collectionGid}
-                        direction="inline"
-                        gap="small"
-                        alignItems="center"
-                      >
-                        <s-text>{collectionGid}</s-text>
+                  {collectionSelections.length > 0 ? (
+                    <s-stack direction="block" gap="small">
+                      <s-text>
+                        {collectionSelections.length} collection
+                        {collectionSelections.length === 1 ? "" : "s"} selected.
+                      </s-text>
 
-                        <s-button
-                          type="button"
-                          variant="tertiary"
-                          onClick={() => handleRemoveCollection(collectionGid)}
+                      {collectionSelections.map((collectionGid) => (
+                        <s-stack
+                          key={collectionGid}
+                          direction="inline"
+                          gap="small"
+                          alignItems="center"
                         >
-                          Remove
-                        </s-button>
-                      </s-stack>
-                    ))}
-                  </s-stack>
-                ) : (
-                  <s-text color="subdued">No collections selected.</s-text>
-                )}
+                          <s-text>{collectionGid}</s-text>
+
+                          <s-button
+                            type="button"
+                            variant="tertiary"
+                            onClick={() =>
+                              handleRemoveCollection(collectionGid)
+                            }
+                          >
+                            Remove
+                          </s-button>
+                        </s-stack>
+                      ))}
+                    </s-stack>
+                  ) : (
+                    <s-text color="subdued">No collections selected.</s-text>
+                  )}
+                </s-stack>
               </s-stack>
-            </s-box>
-          </s-stack>
-        </s-section>
+            </s-stack>
 
-        <s-section heading="Publishing">
-          <s-stack direction="block" gap="base">
-            <s-select
-              name="status"
-              label="Status"
-              value={values.status || "draft"}
-            >
-              <s-option value="draft">Draft</s-option>
-              <s-option value="published">Published</s-option>
-            </s-select>
+            <s-divider />
 
-            {errors.status ? (
-              <s-text tone="critical">{errors.status}</s-text>
+            <s-stack direction="block" gap="base">
+              <s-heading>Publishing</s-heading>
+
+              <s-select
+                name="status"
+                label="Status"
+                value={values.status || "draft"}
+              >
+                <s-option value="draft">Draft</s-option>
+
+                <s-option value="published">Published</s-option>
+              </s-select>
+
+              {errors.status ? (
+                <s-text tone="critical">{errors.status}</s-text>
+              ) : null}
+
+              <s-number-field
+                name="sortOrder"
+                label="Sort order"
+                value={String(values.sortOrder ?? 0)}
+                min="0"
+                step="1"
+                details="Lower numbers appear first."
+                error={errors.sortOrder}
+              />
+            </s-stack>
+
+            {actionData?.error ? (
+              <>
+                <s-divider />
+
+                <s-text tone="critical">{actionData.error}</s-text>
+              </>
             ) : null}
 
-            <s-number-field
-              name="sortOrder"
-              label="Sort order"
-              value={String(values.sortOrder ?? 0)}
-              min="0"
-              step="1"
-              details="Lower numbers appear first."
-              error={errors.sortOrder}
-            />
-          </s-stack>
-        </s-section>
+            <s-divider />
 
-        {actionData?.error ? (
-          <s-section>
-            <s-text tone="critical">{actionData.error}</s-text>
-          </s-section>
-        ) : null}
+            <s-stack direction="inline" gap="small" justifyContent="end">
+              <s-button href="/app/faqs" disabled={isSaving}>
+                Cancel
+              </s-button>
 
-        <s-section>
-          <s-stack direction="inline" gap="small" justifyContent="end">
-            <s-button href="/app/faqs" disabled={isSaving}>
-              Cancel
-            </s-button>
+              <input type="hidden" name="intent" value="save" />
 
-            <s-button type="submit" variant="primary" disabled={isSaving}>
-              {isSaving ? "Saving..." : isNew ? "Create FAQ" : "Save changes"}
-            </s-button>
+              <s-button type="submit" variant="primary" disabled={isSaving}>
+                {isSaving ? "Saving..." : isNew ? "Create FAQ" : "Save changes"}
+              </s-button>
+            </s-stack>
           </s-stack>
         </s-section>
       </Form>
