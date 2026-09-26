@@ -8,7 +8,7 @@ export const loader = async ({ request }) => {
 
 export default function Index() {
   return (
-    <s-page heading="FAQFlow">
+    <s-page heading="FAQFlow" inlineSize="large">
       <s-section heading="Welcome to FAQFlow">
         <s-paragraph>
           Manage your Shopify store FAQs from one place.
