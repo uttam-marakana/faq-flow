@@ -17,12 +17,57 @@ export async function loader({ request }) {
   }
 
   const shop = session.shop;
+  const url = new URL(request.url);
+
+  const productId = url.searchParams.get("product_id")?.trim() || "";
+
+  const collectionId = url.searchParams.get("collection_id")?.trim() || "";
+
+  const productGid = /^\d+$/.test(productId)
+    ? `gid://shopify/Product/${productId}`
+    : null;
+
+  const collectionGid = /^\d+$/.test(collectionId)
+    ? `gid://shopify/Collection/${collectionId}`
+    : null;
+
+  const targetingConditions = [
+    {
+      products: {
+        none: {},
+      },
+      collections: {
+        none: {},
+      },
+    },
+  ];
+
+  if (productGid) {
+    targetingConditions.push({
+      products: {
+        some: {
+          productGid,
+        },
+      },
+    });
+  }
+
+  if (collectionGid) {
+    targetingConditions.push({
+      collections: {
+        some: {
+          collectionGid,
+        },
+      },
+    });
+  }
 
   const [faqs, categories, groups] = await Promise.all([
     prisma.faq.findMany({
       where: {
         shop,
         status: "published",
+        OR: targetingConditions,
       },
       include: {
         category: true,
