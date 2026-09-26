@@ -12,6 +12,8 @@
   data-empty-message="{{ block.settings.empty_message | escape }}"
   data-enable-json-ld="{{ block.settings.enable_json_ld }}"
   data-category-style="{{ block.settings.category_style }}"
+  data-product-id="{% if product %}{{ product.id }}{% endif %}"
+  data-collection-id="{% if collection %}{{ collection.id }}{% endif %}"
   style="
     --faqflow-max-width: {{ block.settings.content_width }}px;
     --faqflow-heading-align: {{ block.settings.heading_alignment }};
