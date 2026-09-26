@@ -192,13 +192,23 @@
 
   async function loadFaqs(block) {
     const statusElement = block.querySelector("[data-faqflow-status]");
+
     const listElement = block.querySelector("[data-faqflow-list]");
+
     const categoriesElement = block.querySelector("[data-faqflow-categories]");
+
     const groupsElement = block.querySelector("[data-faqflow-groups]");
+
     const searchElement = block.querySelector("[data-faqflow-search]");
 
+    const productId = block.dataset.productId?.trim() || "";
+
+    const collectionId = block.dataset.collectionId?.trim() || "";
+
     let faqData = null;
+
     let activeCategory = block.dataset.defaultCategory || "";
+
     let activeGroup = block.dataset.defaultGroup || "";
 
     const allowMultipleOpen = block.dataset.multipleOpen === "true";
@@ -256,6 +266,7 @@
           !activeGroup || faq.groups?.some((group) => group.id === activeGroup);
 
         const questionText = faq.question.toLowerCase();
+
         const answerText = faqHtmlToSearchText(faq.answer);
 
         const matchesSearch =
@@ -331,6 +342,7 @@
       allButton.className = "faqflow__category";
       allButton.textContent = "All";
       allButton.dataset.categoryId = "";
+
       allButton.setAttribute("aria-pressed", String(!activeCategory));
 
       if (!activeCategory) {
@@ -353,6 +365,7 @@
         button.className = "faqflow__category";
         button.textContent = category.name;
         button.dataset.categoryId = category.id;
+
         button.setAttribute(
           "aria-pressed",
           String(activeCategory === category.id),
@@ -386,6 +399,7 @@
       allButton.className = "faqflow__group";
       allButton.textContent = "All";
       allButton.dataset.groupId = "";
+
       allButton.setAttribute("aria-pressed", String(!activeGroup));
 
       if (!activeGroup) {
@@ -408,6 +422,7 @@
         button.className = "faqflow__group";
         button.textContent = group.name;
         button.dataset.groupId = group.id;
+
         button.setAttribute("aria-pressed", String(activeGroup === group.id));
 
         if (activeGroup === group.id) {
@@ -428,7 +443,23 @@
     try {
       setStatus("Loading FAQs...", false);
 
-      const response = await fetch("/apps/faqflow", {
+      const params = new URLSearchParams();
+
+      if (productId) {
+        params.set("product_id", productId);
+      }
+
+      if (collectionId) {
+        params.set("collection_id", collectionId);
+      }
+
+      const queryString = params.toString();
+
+      const endpoint = queryString
+        ? `/apps/faqflow?${queryString}`
+        : "/apps/faqflow";
+
+      const response = await fetch(endpoint, {
         method: "GET",
         headers: {
           Accept: "application/json",
