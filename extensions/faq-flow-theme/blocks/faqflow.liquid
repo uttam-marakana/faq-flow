@@ -12,6 +12,8 @@
   data-empty-message="{{ block.settings.empty_message | escape }}"
   data-enable-json-ld="{{ block.settings.enable_json_ld }}"
   data-category-style="{{ block.settings.category_style }}"
+  data-layout-style="{{ block.settings.layout_style }}"
+  data-accordion-style="{{ block.settings.accordion_style }}"
   data-product-id="{% if product %}{{ product.id }}{% endif %}"
   data-collection-id="{% if collection %}{{ collection.id }}{% endif %}"
   style="
@@ -39,15 +41,35 @@
         Search FAQs
       </label>
 
-      <input
-        id="faqflow-search-{{ block.id }}"
-        class="faqflow__search-input"
-        type="search"
-        placeholder="Search frequently asked questions"
-        autocomplete="off"
-        aria-label="Search frequently asked questions"
-        data-faqflow-search
-      >
+      <div class="faqflow__search-control">
+        <input
+          id="faqflow-search-{{ block.id }}"
+          class="faqflow__search-input"
+          type="search"
+          placeholder="Search frequently asked questions"
+          autocomplete="off"
+          aria-label="Search frequently asked questions"
+          aria-controls="faqflow-list-{{ block.id }}"
+          data-faqflow-search
+        >
+
+        <button
+          type="button"
+          class="faqflow__search-clear"
+          aria-label="Clear FAQ search"
+          data-faqflow-search-clear
+          hidden
+        >
+          ×
+        </button>
+      </div>
+
+      <div
+        class="faqflow__search-meta"
+        data-faqflow-search-meta
+        aria-live="polite"
+        aria-atomic="true"
+      ></div>
     </div>
   {% endif %}
 
@@ -78,6 +100,7 @@
   </div>
 
   <div
+    id="faqflow-list-{{ block.id }}"
     class="faqflow__list"
     data-faqflow-list
   ></div>
@@ -128,6 +151,42 @@
       "id": "default_category",
       "label": "Default category",
       "info": "Enter a category slug, such as shipping. Leave blank to show all FAQs."
+    },
+    {
+      "type": "select",
+      "id": "layout_style",
+      "label": "FAQ layout",
+      "options": [
+        {
+          "value": "accordion",
+          "label": "Accordion"
+        },
+        {
+          "value": "two_column",
+          "label": "Two columns"
+        }
+      ],
+      "default": "accordion"
+    },
+    {
+      "type": "select",
+      "id": "accordion_style",
+      "label": "FAQ style",
+      "options": [
+        {
+          "value": "default",
+          "label": "Default"
+        },
+        {
+          "value": "cards",
+          "label": "Cards"
+        },
+        {
+          "value": "minimal",
+          "label": "Minimal"
+        }
+      ],
+      "default": "default"
     },
     {
       "type": "checkbox",
