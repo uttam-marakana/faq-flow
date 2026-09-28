@@ -284,72 +284,74 @@ export default function CategoryForm() {
         </s-button>
       ) : null}
 
-      <Form method="post">
-        <s-section heading="Category Details">
-          <s-stack direction="block" gap="base">
-            <s-text-field
-              name="name"
-              label="Category name"
-              placeholder="e.g. Shipping"
-              value={values.name}
-              error={errors.name}
-              required
-              autocomplete="off"
-            />
+      <s-section>
+        <s-stack direction="block" gap="base">
+          <s-section heading="Category Details">
+            <s-stack direction="block" gap="base">
+              <s-text-field
+                name="name"
+                label="Category name"
+                placeholder="e.g. Shipping"
+                value={values.name}
+                error={errors.name}
+                required
+                autocomplete="off"
+              />
 
-            <s-text-field
-              name="slug"
-              label="Slug"
-              placeholder="e.g. shipping"
-              value={values.slug}
-              error={errors.slug}
-              required
-              autocomplete="off"
-            />
+              <s-text-field
+                name="slug"
+                label="Slug"
+                placeholder="e.g. shipping"
+                value={values.slug}
+                error={errors.slug}
+                required
+                autocomplete="off"
+              />
 
-            <s-text-area
-              name="description"
-              label="Description"
-              placeholder="Describe this FAQ category"
-              value={values.description}
-              rows="5"
-              autocomplete="off"
-            />
+              <s-text-area
+                name="description"
+                label="Description"
+                placeholder="Describe this FAQ category"
+                value={values.description}
+                rows="5"
+                autocomplete="off"
+              />
 
-            <s-number-field
-              name="sortOrder"
-              label="Sort order"
-              value={String(values.sortOrder ?? 0)}
-              min="0"
-              step="1"
-              details="Lower numbers appear first."
-              error={errors.sortOrder}
-            />
-          </s-stack>
-        </s-section>
-
-        {actionData?.error ? (
-          <s-section>
-            <s-text tone="critical">{actionData.error}</s-text>
+              <s-number-field
+                name="sortOrder"
+                label="Sort order"
+                value={String(values.sortOrder ?? 0)}
+                min="0"
+                step="1"
+                details="Lower numbers appear first."
+                error={errors.sortOrder}
+              />
+            </s-stack>
           </s-section>
-        ) : null}
 
-        <s-section>
-          <s-stack direction="inline" gap="small" justifyContent="end">
-            <s-button href="/app/categories" disabled={isSaving}>
-              Cancel
-            </s-button>
+          {actionData?.error ? (
+            <s-section>
+              <s-text tone="critical">{actionData.error}</s-text>
+            </s-section>
+          ) : null}
 
-            <s-button type="submit" variant="primary" disabled={isSaving}>
-              {isSaving
-                ? "Saving..."
-                : isNew
-                  ? "Create Category"
-                  : "Save changes"}
-            </s-button>
-          </s-stack>
-        </s-section>
-      </Form>
+          <s-section>
+            <s-stack direction="inline" gap="small" justifyContent="end">
+              <s-button href="/app/categories" disabled={isSaving}>
+                Cancel
+              </s-button>
+
+              <s-button type="submit" variant="primary" disabled={isSaving}>
+                {isSaving
+                  ? "Saving..."
+                  : isNew
+                    ? "Create Category"
+                    : "Save changes"}
+              </s-button>
+            </s-stack>
+          </s-section>
+        </s-stack>
+      </s-section>
     </s-page>
   );
 }
