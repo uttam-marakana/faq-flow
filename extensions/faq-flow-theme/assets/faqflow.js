@@ -268,7 +268,7 @@
     }
 
     function updateSearchControls(resultCount, totalCount) {
-      const searchTerm = searchElement?.value.trim() || "";
+      const searchTerm = searchElement?.value.trim().toLowerCase() || "";
 
       if (searchClearElement) {
         searchClearElement.hidden = !searchTerm;
@@ -423,12 +423,34 @@
       });
     }
 
+    function hasFaqsForCategory(categoryId) {
+      return faqData.faqs.some((faq) => faq.category?.id === categoryId);
+    }
+
+    function hasFaqsForGroup(groupId) {
+      return faqData.faqs.some((faq) =>
+        faq.groups?.some((group) => group.id === groupId),
+      );
+    }
+
+    function getVisibleCategories() {
+      return faqData.categories.filter((category) =>
+        hasFaqsForCategory(category.id),
+      );
+    }
+
+    function getVisibleGroups() {
+      return faqData.groups.filter((group) => hasFaqsForGroup(group.id));
+    }
+
     function renderCategories() {
       if (!categoriesElement || block.dataset.showCategories !== "true") {
         return;
       }
 
       categoriesElement.replaceChildren();
+
+      const visibleCategories = getVisibleCategories();
 
       const allButton = document.createElement("button");
 
@@ -452,7 +474,7 @@
 
       categoriesElement.appendChild(allButton);
 
-      faqData.categories.forEach((category) => {
+      visibleCategories.forEach((category) => {
         const button = document.createElement("button");
 
         button.type = "button";
@@ -478,6 +500,8 @@
 
         categoriesElement.appendChild(button);
       });
+
+      categoriesElement.hidden = visibleCategories.length === 0;
     }
 
     function renderGroups() {
@@ -486,6 +510,8 @@
       }
 
       groupsElement.replaceChildren();
+
+      const visibleGroups = getVisibleGroups();
 
       const allButton = document.createElement("button");
 
@@ -509,7 +535,7 @@
 
       groupsElement.appendChild(allButton);
 
-      faqData.groups.forEach((group) => {
+      visibleGroups.forEach((group) => {
         const button = document.createElement("button");
 
         button.type = "button";
@@ -532,6 +558,8 @@
 
         groupsElement.appendChild(button);
       });
+
+      groupsElement.hidden = visibleGroups.length === 0;
     }
 
     try {
@@ -590,7 +618,8 @@
 
       if (activeCategory) {
         const defaultCategory = faqData.categories.find(
-          (category) => category.slug === activeCategory,
+          (category) =>
+            category.slug === activeCategory && hasFaqsForCategory(category.id),
         );
 
         activeCategory = defaultCategory?.id || "";
@@ -598,7 +627,7 @@
 
       if (activeGroup) {
         const defaultGroup = faqData.groups.find(
-          (group) => group.slug === activeGroup,
+          (group) => group.slug === activeGroup && hasFaqsForGroup(group.id),
         );
 
         activeGroup = defaultGroup?.id || "";
