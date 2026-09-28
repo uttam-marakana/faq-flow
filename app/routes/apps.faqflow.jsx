@@ -6,13 +6,8 @@ export async function loader({ request }) {
 
   if (!session?.shop) {
     return Response.json(
-      {
-        success: false,
-        error: "Shop could not be identified.",
-      },
-      {
-        status: 401,
-      },
+      { success: false, error: "Shop could not be identified." },
+      { status: 401 },
     );
   }
 
@@ -30,44 +25,49 @@ export async function loader({ request }) {
     ? `gid://shopify/Collection/${collectionId}`
     : null;
 
-  const targetingConditions = [
-    {
-      products: {
-        none: {},
-      },
-      collections: {
-        none: {},
-      },
-    },
-  ];
+  const where = {
+    shop,
+    status: "published",
+  };
 
-  if (productGid) {
-    targetingConditions.push({
-      products: {
-        some: {
-          productGid,
+  if (productGid || collectionGid) {
+    where.OR = [
+      {
+        products: {
+          none: {},
+        },
+        collections: {
+          none: {},
         },
       },
-    });
-  }
-
-  if (collectionGid) {
-    targetingConditions.push({
-      collections: {
-        some: {
-          collectionGid,
-        },
-      },
-    });
+      ...(productGid
+        ? [
+            {
+              products: {
+                some: {
+                  productGid,
+                },
+              },
+            },
+          ]
+        : []),
+      ...(collectionGid
+        ? [
+            {
+              collections: {
+                some: {
+                  collectionGid,
+                },
+              },
+            },
+          ]
+        : []),
+    ];
   }
 
   const [faqs, categories, groups] = await Promise.all([
     prisma.faq.findMany({
-      where: {
-        shop,
-        status: "published",
-        OR: targetingConditions,
-      },
+      where,
       include: {
         category: true,
         groups: {
@@ -83,6 +83,9 @@ export async function loader({ request }) {
         {
           createdAt: "asc",
         },
+        {
+          id: "asc",
+        },
       ],
     }),
 
@@ -97,6 +100,9 @@ export async function loader({ request }) {
         {
           name: "asc",
         },
+        {
+          id: "asc",
+        },
       ],
     }),
 
@@ -110,6 +116,9 @@ export async function loader({ request }) {
         },
         {
           name: "asc",
+        },
+        {
+          id: "asc",
         },
       ],
     }),
