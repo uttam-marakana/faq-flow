@@ -10,6 +10,8 @@
   data-category-style="{{ block.settings.category_style }}"
   data-layout-style="{{ block.settings.layout_style }}"
   data-accordion-style="{{ block.settings.accordion_style }}"
+  data-pagination-enabled="{{ block.settings.enable_pagination }}"
+  data-pagination-size="{{ block.settings.pagination_size }}"
   data-product-id="{% if product %}{{ product.id }}{% endif %}"
   data-collection-id="{% if collection %}{{ collection.id }}{% endif %}"
   style="
@@ -89,6 +91,41 @@
     class="faqflow__list"
     data-faqflow-list
   ></div>
+
+  {% if block.settings.enable_pagination %}
+    <nav
+      class="faqflow__pagination"
+      data-faqflow-pagination
+      aria-label="FAQ pagination"
+      hidden
+    >
+      <button
+        class="faqflow__pagination-button"
+        type="button"
+        data-faqflow-pagination-prev
+        disabled
+        aria-label="Previous FAQ page"
+      >
+        Previous
+      </button>
+
+      <span
+        class="faqflow__pagination-info"
+        data-faqflow-pagination-info
+        aria-live="polite"
+      ></span>
+
+      <button
+        class="faqflow__pagination-button"
+        type="button"
+        data-faqflow-pagination-next
+        disabled
+        aria-label="Next FAQ page"
+      >
+        Next
+      </button>
+    </nav>
+  {% endif %}
 
   <script type="application/ld+json" data-faqflow-jsonld></script>
 </div>
@@ -221,6 +258,44 @@
         {
           "value": "minimal",
           "label": "Minimal"
+        }
+      ]
+    },
+    {
+      "type": "header",
+      "content": "Pagination"
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_pagination",
+      "label": "Enable pagination",
+      "default": true
+    },
+    {
+      "type": "select",
+      "id": "pagination_size",
+      "label": "FAQs per page",
+      "default": "6",
+      "options": [
+        {
+          "value": "4",
+          "label": "4"
+        },
+        {
+          "value": "6",
+          "label": "6"
+        },
+        {
+          "value": "8",
+          "label": "8"
+        },
+        {
+          "value": "10",
+          "label": "10"
+        },
+        {
+          "value": "12",
+          "label": "12"
         }
       ]
     },
