@@ -589,22 +589,133 @@
   border-bottom-width: var(--faqflow-border-width, 1px);
 }
 
+/* FAQFlow theme compatibility */
+.faqflow button,
+.faqflow input,
+.faqflow summary {
+  box-sizing: border-box;
+  font: inherit;
+}
+
+.faqflow button {
+  appearance: none;
+  -webkit-appearance: none;
+  text-transform: none;
+  letter-spacing: normal;
+  text-indent: 0;
+  text-shadow: none;
+}
+
+.faqflow input {
+  appearance: none;
+  -webkit-appearance: none;
+  text-transform: none;
+  letter-spacing: normal;
+  text-indent: 0;
+  text-shadow: none;
+}
+
+.faqflow summary {
+  display: block;
+  list-style: none;
+}
+
+.faqflow summary::-webkit-details-marker {
+  display: none;
+}
+
+.faqflow h1,
+.faqflow h2,
+.faqflow h3,
+.faqflow h4,
+.faqflow h5,
+.faqflow h6,
+.faqflow p,
+.faqflow ul,
+.faqflow ol,
+.faqflow li {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.faqflow__answer a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.faqflow__answer ul,
+.faqflow__answer ol {
+  margin-top: 1em;
+  margin-bottom: 1em;
+  padding-left: 1.5em;
+}
+
+.faqflow__answer li {
+  margin-bottom: 0.35em;
+}
+
+.faqflow__answer li:last-child {
+  margin-bottom: 0;
+}
+
+.faqflow__answer table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  -webkit-overflow-scrolling: touch;
+}
+
+.faqflow__answer th,
+.faqflow__answer td {
+  max-width: 100%;
+  padding: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  text-align: left;
+  vertical-align: top;
+}
+
+.faqflow__answer blockquote {
+  margin: 1em 0;
+  padding: 0 0 0 1em;
+  border-left: 3px solid var(--faqflow-accent-color, #111111);
+}
+
+.faqflow__answer p:first-child,
+.faqflow__answer ul:first-child,
+.faqflow__answer ol:first-child,
+.faqflow__answer blockquote:first-child {
+  margin-top: 0;
+}
+
+.faqflow__answer p:last-child,
+.faqflow__answer ul:last-child,
+.faqflow__answer ol:last-child,
+.faqflow__answer blockquote:last-child {
+  margin-bottom: 0;
+}
+
 /* FAQFlow large desktop */
 @media screen and (min-width: 1200px) {
   .faqflow {
     width: 100%;
     max-width: min(var(--faqflow-max-width, 1400px), 100%);
   }
+
   .faqflow__groups,
   .faqflow__categories {
     flex-wrap: wrap;
     overflow: visible;
   }
+
   .faqflow[data-category-style="pills"] .faqflow__categories,
   .faqflow[data-category-style="buttons"] .faqflow__categories {
     flex-wrap: wrap;
     overflow: visible;
   }
+
   .faqflow[data-category-style="tabs"] .faqflow__categories {
     flex-wrap: nowrap;
     gap: 20px;
@@ -619,17 +730,20 @@
     width: 100%;
     max-width: 100%;
   }
+
   .faqflow__groups,
   .faqflow__categories {
     flex-wrap: wrap;
     overflow: visible;
   }
+
   .faqflow[data-category-style="pills"] .faqflow__categories,
   .faqflow[data-category-style="buttons"] .faqflow__categories {
     flex-wrap: wrap;
     gap: 8px;
     overflow: visible;
   }
+
   .faqflow[data-category-style="tabs"] .faqflow__categories {
     flex-wrap: nowrap;
     gap: 18px;
@@ -645,18 +759,22 @@
     max-width: 100%;
     margin: 0;
   }
+
   .faqflow__header {
     margin-bottom: 20px;
   }
+
   .faqflow__search {
     margin-bottom: 18px;
   }
+
   .faqflow__groups {
     flex-wrap: wrap;
     gap: 8px;
     margin-bottom: 16px;
     overflow: visible;
   }
+
   .faqflow__categories {
     flex-wrap: wrap;
     gap: 8px;
@@ -664,18 +782,22 @@
     padding-bottom: 0;
     overflow: visible;
   }
+
   .faqflow__group,
   .faqflow__category {
+    touch-action: manipulation;
     flex: 0 0 auto;
     max-width: 100%;
     min-height: 40px;
   }
+
   .faqflow[data-category-style="pills"] .faqflow__categories,
   .faqflow[data-category-style="buttons"] .faqflow__categories {
     flex-wrap: wrap;
     gap: 8px;
     overflow: visible;
   }
+
   .faqflow[data-category-style="tabs"] .faqflow__categories {
     flex-wrap: nowrap;
     gap: 18px;
@@ -683,13 +805,16 @@
     overflow-x: auto;
     overflow-y: hidden;
   }
+
   .faqflow[data-category-style="tabs"] .faqflow__category {
     max-width: none;
     white-space: nowrap;
   }
+
   .faqflow__question {
     padding: 17px 40px 17px 0;
   }
+
   .faqflow__answer {
     padding-bottom: 17px;
   }
@@ -702,18 +827,22 @@
     max-width: 100%;
     margin: 0;
   }
+
   .faqflow__header {
     margin-bottom: 18px;
   }
+
   .faqflow__search {
     margin-bottom: 16px;
   }
+
   .faqflow__groups {
     flex-wrap: wrap;
     gap: 7px;
     margin-bottom: 14px;
     overflow: visible;
   }
+
   .faqflow__categories {
     flex-wrap: wrap;
     gap: 7px;
@@ -721,13 +850,16 @@
     padding-bottom: 0;
     overflow: visible;
   }
+
   .faqflow__group {
+    touch-action: manipulation;
     flex: 0 0 auto;
     max-width: 100%;
     min-height: 40px;
     padding: 8px 13px;
     font-size: 14px;
   }
+
   .faqflow__category {
     flex: 0 0 auto;
     max-width: 100%;
@@ -736,12 +868,14 @@
     white-space: normal;
     overflow-wrap: anywhere;
   }
+
   .faqflow[data-category-style="pills"] .faqflow__categories,
   .faqflow[data-category-style="buttons"] .faqflow__categories {
     flex-wrap: wrap;
     gap: 7px;
     overflow: visible;
   }
+
   .faqflow[data-category-style="tabs"] .faqflow__categories {
     flex-wrap: nowrap;
     gap: 14px;
@@ -749,15 +883,18 @@
     overflow-x: auto;
     overflow-y: hidden;
   }
+
   .faqflow[data-category-style="tabs"] .faqflow__category {
     max-width: none;
     padding: 8px 2px;
     white-space: nowrap;
     overflow-wrap: normal;
   }
+
   .faqflow__question {
     padding: 16px 38px 16px 0;
   }
+
   .faqflow__answer {
     padding-bottom: 16px;
   }
@@ -774,6 +911,7 @@
     overflow-x: clip;
     overflow-y: visible;
   }
+
   .faqflow {
     width: 100%;
     max-width: 100%;
@@ -783,23 +921,28 @@
     overflow-x: clip;
     overflow-y: visible;
   }
+
   .faqflow__header {
     margin-bottom: 16px;
   }
+
   .faqflow__heading {
     font-size: 28px;
     line-height: 1.2;
   }
+
   .faqflow__search {
     width: 100%;
     max-width: 100%;
     margin-bottom: 14px;
     overflow: hidden;
   }
+
   .faqflow__search-label {
     margin-bottom: 6px;
     font-size: 14px;
   }
+
   .faqflow__search-input {
     width: 100%;
     max-width: 100%;
@@ -807,6 +950,7 @@
     padding: 11px 44px 11px 12px;
     font-size: 14px;
   }
+
   .faqflow__groups {
     width: 100%;
     max-width: 100%;
@@ -817,8 +961,8 @@
     padding: 2px 0 0;
     overflow: visible;
   }
+
   .faqflow__group {
-    touch-action: manipulation;
     flex: 0 0 auto;
     width: auto;
     max-width: 100%;
@@ -828,6 +972,7 @@
     white-space: normal;
     overflow-wrap: anywhere;
   }
+
   .faqflow__categories {
     width: 100%;
     max-width: 100%;
@@ -838,8 +983,8 @@
     padding: 2px 0 0;
     overflow: visible;
   }
+
   .faqflow__category {
-    touch-action: manipulation;
     flex: 0 0 auto;
     width: auto;
     max-width: 100%;
@@ -849,20 +994,25 @@
     white-space: normal;
     overflow-wrap: anywhere;
   }
+
   .faqflow[data-category-style="pills"] .faqflow__categories {
     flex-wrap: wrap;
     overflow: visible;
   }
+
   .faqflow[data-category-style="pills"] .faqflow__category {
     border-radius: 999px;
   }
+
   .faqflow[data-category-style="buttons"] .faqflow__categories {
     flex-wrap: wrap;
     overflow: visible;
   }
+
   .faqflow[data-category-style="buttons"] .faqflow__category {
     border-radius: var(--faqflow-border-radius, 6px);
   }
+
   .faqflow[data-category-style="tabs"] .faqflow__categories {
     flex-wrap: nowrap;
     gap: 12px;
@@ -873,9 +1023,11 @@
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
   }
+
   .faqflow[data-category-style="tabs"] .faqflow__categories::-webkit-scrollbar {
     display: none;
   }
+
   .faqflow[data-category-style="tabs"] .faqflow__category {
     flex: 0 0 auto;
     max-width: none;
@@ -883,6 +1035,7 @@
     white-space: nowrap;
     overflow-wrap: normal;
   }
+
   .faqflow__status {
     width: 100%;
     max-width: 100%;
@@ -890,17 +1043,20 @@
     font-size: 14px;
     overflow-wrap: anywhere;
   }
+
   .faqflow__list {
     width: 100%;
     max-width: 100%;
     min-width: 0;
     overflow: visible;
   }
+
   .faqflow__item {
     width: 100%;
     max-width: 100%;
     min-width: 0;
   }
+
   .faqflow__question {
     touch-action: manipulation;
     width: 100%;
@@ -913,12 +1069,14 @@
     overflow-wrap: anywhere;
     word-break: break-word;
   }
+
   .faqflow__question::after {
     right: 2px;
     width: 20px;
     height: 20px;
     font-size: 20px;
   }
+
   .faqflow__answer {
     width: 100%;
     max-width: 100%;
@@ -936,9 +1094,11 @@
   .faqflow__heading {
     font-size: 25px;
   }
+
   .faqflow__search {
     margin-bottom: 12px;
   }
+
   .faqflow__search-input {
     width: 100%;
     max-width: 100%;
@@ -946,32 +1106,39 @@
     padding: 10px 42px 10px 11px;
     font-size: 14px;
   }
+
   .faqflow__groups {
     gap: 5px;
     margin-bottom: 12px;
     padding-bottom: 0;
   }
+
   .faqflow__group {
     min-height: 38px;
     padding: 7px 10px;
     font-size: 13px;
   }
+
   .faqflow__categories {
     gap: 5px;
     margin-bottom: 16px;
     padding-bottom: 0;
   }
+
   .faqflow__category {
     min-height: 38px;
     padding: 7px 10px;
     font-size: 13px;
   }
+
   .faqflow[data-category-style="pills"] .faqflow__category {
     border-radius: 999px;
   }
+
   .faqflow[data-category-style="buttons"] .faqflow__category {
     border-radius: var(--faqflow-border-radius, 6px);
   }
+
   .faqflow[data-category-style="tabs"] .faqflow__categories {
     flex-wrap: nowrap;
     gap: 10px;
@@ -979,26 +1146,31 @@
     overflow-x: auto;
     overflow-y: hidden;
   }
+
   .faqflow[data-category-style="tabs"] .faqflow__category {
     padding: 7px 2px;
     white-space: nowrap;
   }
+
   .faqflow__status {
     padding: 10px 0;
     font-size: 13px;
   }
+
   .faqflow__question {
     min-height: 48px;
     padding: 14px 34px 14px 0;
     font-size: 14px;
     line-height: 1.45;
   }
+
   .faqflow__question::after {
     right: 1px;
     width: 18px;
     height: 18px;
     font-size: 19px;
   }
+
   .faqflow__answer {
     padding-bottom: 14px;
     font-size: 14px;
@@ -1011,34 +1183,43 @@
   .faqflow__heading {
     font-size: 23px;
   }
+
   .faqflow__groups {
     gap: 4px;
   }
+
   .faqflow__group {
     max-width: 100%;
     padding: 7px 9px;
     font-size: 12px;
   }
+
   .faqflow__categories {
     gap: 4px;
   }
+
   .faqflow__category {
     max-width: 100%;
     padding: 7px 9px;
     font-size: 12px;
   }
+
   .faqflow[data-category-style="tabs"] .faqflow__categories {
     gap: 9px;
   }
+
   .faqflow[data-category-style="tabs"] .faqflow__category {
     padding: 7px 2px;
   }
+
   .faqflow__question {
     padding-right: 32px;
   }
+
   .faqflow__question::after {
     right: 0;
   }
+
   .faqflow__answer {
     font-size: 13px;
   }
@@ -1049,17 +1230,21 @@
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
   }
+
   .faqflow[data-layout-style="two_column"] .faqflow__item {
     border-radius: var(--faqflow-border-radius, 6px);
   }
+
   .faqflow[data-layout-style="two_column"][data-accordion-style="cards"]
     .faqflow__item {
     margin-bottom: 12px;
   }
+
   .faqflow[data-layout-style="two_column"][data-accordion-style="cards"]
     .faqflow__item:last-child {
     margin-bottom: 0;
   }
+
   .faqflow[data-layout-style="two_column"][data-accordion-style="minimal"]
     .faqflow__item {
     border-right: 0;
