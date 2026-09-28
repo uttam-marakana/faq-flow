@@ -69,6 +69,9 @@ export async function loader({ request, params }) {
               createdAt: "asc",
             },
           },
+          {
+            faqId: "asc",
+          },
         ],
       },
     },
@@ -102,10 +105,16 @@ export async function action({ request, params }) {
   const { session } = await authenticate.admin(request);
 
   const formData = await request.formData();
-
   const intent = formData.get("intent");
 
   if (intent === "delete") {
+    if (!params.id || params.id === "new") {
+      return {
+        success: false,
+        error: "Invalid group.",
+      };
+    }
+
     const existingGroup = await prisma.group.findFirst({
       where: {
         id: params.id,
@@ -228,15 +237,11 @@ export async function action({ request, params }) {
   }
 
   const name = formData.get("name")?.toString().trim() || "";
-
   const rawSlug = formData.get("slug")?.toString().trim() || "";
-
   const description = formData.get("description")?.toString().trim() || "";
-
   const rawSortOrder = formData.get("sortOrder")?.toString().trim() || "0";
 
   const sortOrder = Number.parseInt(rawSortOrder, 10);
-
   const errors = {};
 
   if (!name) {
@@ -295,14 +300,18 @@ export async function action({ request, params }) {
     };
   }
 
+  const data = {
+    name,
+    slug,
+    description: description || null,
+    sortOrder,
+  };
+
   if (params.id === "new") {
     await prisma.group.create({
       data: {
         shop: session.shop,
-        name,
-        slug,
-        description: description || null,
-        sortOrder,
+        ...data,
       },
     });
   } else {
@@ -323,14 +332,8 @@ export async function action({ request, params }) {
     await prisma.group.update({
       where: {
         id: existingGroupForUpdate.id,
-        shop: session.shop,
       },
-      data: {
-        name,
-        slug,
-        description: description || null,
-        sortOrder,
-      },
+      data,
     });
   }
 
@@ -340,12 +343,10 @@ export async function action({ request, params }) {
 export default function GroupEditor() {
   const { group, groupFaqs, isNew } = useLoaderData();
   const actionData = useActionData();
-
   const navigation = useNavigation();
   const submit = useSubmit();
 
   const isSubmitting = navigation.state === "submitting";
-
   const errors = actionData?.errors || {};
 
   const values = actionData?.values || {
@@ -376,126 +377,179 @@ export default function GroupEditor() {
 
   return (
     <s-page heading={isNew ? "Create Group" : "Edit Group"}>
+      <s-link slot="breadcrumb-actions" href="/app/groups">
+        Groups
+      </s-link>
+
       {!isNew ? (
         <s-button
           slot="secondary-actions"
           tone="critical"
           onClick={handleDelete}
-          loading={isSubmitting}
+          disabled={isSubmitting}
         >
           Delete
         </s-button>
       ) : null}
 
-      <Form method="post">
-        <s-section heading="Group Details">
-          <s-stack direction="block" gap="base">
-            <s-text-field
-              name="name"
-              label="Name"
-              value={values.name}
-              error={errors.name}
-              required
-              autocomplete="off"
-              placeholder="For example, Homepage FAQs"
-            />
+      <s-stack direction="block" gap="base">
+        <Form method="post">
+          <s-section heading="Group details">
+            <s-stack direction="block" gap="base">
+              <s-text-field
+                name="name"
+                label="Group name"
+                placeholder="e.g. Homepage FAQs"
+                value={values.name}
+                error={errors.name}
+                required
+                autocomplete="off"
+              />
 
-            <s-text-field
-              name="slug"
-              label="Slug"
-              value={values.slug}
-              error={errors.slug}
-              autocomplete="off"
-              helpText="Use lowercase letters, numbers, and hyphens."
-            />
+              <s-text-field
+                name="slug"
+                label="Slug"
+                placeholder="e.g. homepage-faqs"
+                value={values.slug}
+                error={errors.slug}
+                helpText="Use lowercase letters, numbers, and hyphens."
+                autocomplete="off"
+              />
 
-            <s-text-area
-              name="description"
-              label="Description"
-              value={values.description}
-              rows="4"
-              autocomplete="off"
-              placeholder="Describe what this group is used for."
-            />
+              <s-text-area
+                name="description"
+                label="Description"
+                placeholder="Describe what this group is used for."
+                value={values.description}
+                rows="5"
+                autocomplete="off"
+              />
 
-            <s-number-field
-              name="sortOrder"
-              label="Sort order"
-              value={values.sortOrder}
-              error={errors.sortOrder}
-              min="0"
-              step="1"
-            />
+              <s-number-field
+                name="sortOrder"
+                label="Sort order"
+                value={String(values.sortOrder ?? 0)}
+                min="0"
+                step="1"
+                details="Lower numbers appear first."
+                error={errors.sortOrder}
+              />
 
-            <s-text color="subdued">Lower numbers appear first.</s-text>
-          </s-stack>
-        </s-section>
+              <input type="hidden" name="intent" value="save" />
 
-        <s-section>
-          <s-stack direction="inline" justifyContent="end" gap="small">
-            <s-button href="/app/groups">Cancel</s-button>
+              {actionData?.error ? (
+                <s-text tone="critical">{actionData.error}</s-text>
+              ) : null}
 
-            <input type="hidden" name="intent" value="save" />
+              <s-stack direction="inline" justifyContent="end" gap="small">
+                <s-button href="/app/groups" disabled={isSubmitting}>
+                  Cancel
+                </s-button>
 
-            <s-button type="submit" variant="primary" loading={isSubmitting}>
-              {isNew ? "Create group" : "Save changes"}
-            </s-button>
-          </s-stack>
-        </s-section>
-      </Form>
-
-      {!isNew ? (
-        <s-section heading="FAQs in this Group">
-          {groupFaqs.length === 0 ? (
-            <s-text color="subdued">
-              No FAQs have been assigned to this group yet.
-            </s-text>
-          ) : (
-            <Form method="post">
-              <input type="hidden" name="intent" value="save-order" />
-
-              <s-stack direction="block" gap="base">
-                {groupFaqs.map((faq) => (
-                  <s-stack
-                    key={faq.faqId}
-                    direction="inline"
-                    gap="base"
-                    alignItems="center"
-                  >
-                    <input type="hidden" name="faqIds" value={faq.faqId} />
-
-                    <s-text>{faq.question}</s-text>
-
-                    <s-number-field
-                      name="sortOrders"
-                      label="Order"
-                      value={String(faq.sortOrder)}
-                      min="0"
-                      step="1"
-                    />
-
-                    <s-badge>{faq.status}</s-badge>
-                  </s-stack>
-                ))}
-
-                {actionData?.error ? (
-                  <s-text tone="critical">{actionData.error}</s-text>
-                ) : null}
-
-                <s-stack direction="inline" justifyContent="end" gap="small">
-                  <s-button
-                    type="submit"
-                    variant="primary"
-                    loading={isSubmitting}
-                  >
-                    {isSubmitting ? "Saving..." : "Save FAQ order"}
-                  </s-button>
-                </s-stack>
+                <s-button
+                  type="submit"
+                  variant="primary"
+                  loading={isSubmitting}
+                >
+                  {isSubmitting
+                    ? "Saving..."
+                    : isNew
+                      ? "Create group"
+                      : "Save changes"}
+                </s-button>
               </s-stack>
-            </Form>
-          )}
-        </s-section>
-      ) : null}
+            </s-stack>
+          </s-section>
+        </Form>
+
+        {!isNew ? (
+          <s-section heading="FAQs in this group">
+            <s-stack direction="block" gap="base">
+              <s-text color="subdued">
+                Manage the display order of FAQs assigned to this group.
+              </s-text>
+
+              {groupFaqs.length === 0 ? (
+                <s-stack direction="block" gap="base">
+                  <s-text>No FAQs have been assigned to this group yet.</s-text>
+
+                  <s-button href="/app/faqs">Manage FAQs</s-button>
+                </s-stack>
+              ) : (
+                <Form method="post">
+                  <input type="hidden" name="intent" value="save-order" />
+
+                  <s-table>
+                    <s-table-header-row>
+                      <s-table-header listSlot="primary">FAQ</s-table-header>
+
+                      <s-table-header listSlot="inline">Status</s-table-header>
+
+                      <s-table-header listSlot="labeled" format="numeric">
+                        Order
+                      </s-table-header>
+                    </s-table-header-row>
+
+                    <s-table-body>
+                      {groupFaqs.map((faq) => (
+                        <s-table-row key={faq.faqId}>
+                          <s-table-cell>
+                            <s-text>{faq.question}</s-text>
+
+                            <input
+                              type="hidden"
+                              name="faqIds"
+                              value={faq.faqId}
+                            />
+                          </s-table-cell>
+
+                          <s-table-cell>
+                            <s-badge
+                              tone={
+                                faq.status === "published"
+                                  ? "success"
+                                  : "neutral"
+                              }
+                            >
+                              {faq.status}
+                            </s-badge>
+                          </s-table-cell>
+
+                          <s-table-cell>
+                            <s-number-field
+                              name="sortOrders"
+                              label="Order"
+                              value={String(faq.sortOrder)}
+                              min="0"
+                              step="1"
+                            />
+                          </s-table-cell>
+                        </s-table-row>
+                      ))}
+                    </s-table-body>
+                  </s-table>
+
+                  {actionData?.error ? (
+                    <s-stack direction="block" gap="small">
+                      <s-text tone="critical">{actionData.error}</s-text>
+                    </s-stack>
+                  ) : null}
+
+                  <s-stack direction="inline" justifyContent="end" gap="small">
+                    <s-button
+                      type="submit"
+                      variant="primary"
+                      loading={isSubmitting}
+                    >
+                      {isSubmitting ? "Saving..." : "Save FAQ order"}
+                    </s-button>
+                  </s-stack>
+                </Form>
+              )}
+            </s-stack>
+          </s-section>
+        ) : null}
+      </s-stack>
     </s-page>
   );
 }
