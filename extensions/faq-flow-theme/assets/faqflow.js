@@ -192,29 +192,21 @@
 
   async function loadFaqs(block) {
     const statusElement = block.querySelector("[data-faqflow-status]");
-
     const listElement = block.querySelector("[data-faqflow-list]");
-
     const categoriesElement = block.querySelector("[data-faqflow-categories]");
-
     const groupsElement = block.querySelector("[data-faqflow-groups]");
-
     const searchElement = block.querySelector("[data-faqflow-search]");
-
     const searchClearElement = block.querySelector(
       "[data-faqflow-search-clear]",
     );
-
     const searchMetaElement = block.querySelector("[data-faqflow-search-meta]");
 
     const productId = block.dataset.productId?.trim() || "";
-
     const collectionId = block.dataset.collectionId?.trim() || "";
 
     let faqData = null;
 
     let activeCategory = block.dataset.defaultCategory || "";
-
     let activeGroup = block.dataset.defaultGroup || "";
 
     const allowMultipleOpen = block.dataset.multipleOpen === "true";
@@ -282,6 +274,7 @@
         searchMetaElement.textContent = totalCount
           ? `${totalCount} ${totalCount === 1 ? "FAQ" : "FAQs"}`
           : "";
+
         return;
       }
 
@@ -347,27 +340,27 @@
 
       const orderedFaqs = sortFaqsByActiveGroup(filteredFaqs);
 
-      updateSearchControls(
-        orderedFaqs.length,
-        faqData.faqs.filter((faq) => {
-          const matchesCategory =
-            !activeCategory || faq.category?.id === activeCategory;
+      const filterMatchedFaqs = faqData.faqs.filter((faq) => {
+        const matchesCategory =
+          !activeCategory || faq.category?.id === activeCategory;
 
-          const matchesGroup =
-            !activeGroup ||
-            faq.groups?.some((group) => group.id === activeGroup);
+        const matchesGroup =
+          !activeGroup || faq.groups?.some((group) => group.id === activeGroup);
 
-          return matchesCategory && matchesGroup;
-        }).length,
-      );
+        return matchesCategory && matchesGroup;
+      });
+
+      updateSearchControls(orderedFaqs.length, filterMatchedFaqs.length);
 
       listElement.replaceChildren();
 
       if (!orderedFaqs.length) {
-        const searchTerm = searchElement?.value.trim() || "";
+        const currentSearchTerm = searchElement?.value.trim() || "";
 
         setStatus(
-          searchTerm ? `No FAQs found for "${searchTerm}".` : emptyMessage,
+          currentSearchTerm
+            ? `No FAQs found for "${currentSearchTerm}".`
+            : emptyMessage,
           false,
         );
 
@@ -388,7 +381,6 @@
         const question = document.createElement("summary");
 
         question.className = "faqflow__question";
-        const searchTerm = normalizeSearchText(searchElement?.value || "");
 
         if (searchTerm) {
           question.innerHTML = highlightText(faq.question, searchTerm);
@@ -423,34 +415,13 @@
       });
     }
 
-    function hasFaqsForCategory(categoryId) {
-      return faqData.faqs.some((faq) => faq.category?.id === categoryId);
-    }
-
-    function hasFaqsForGroup(groupId) {
-      return faqData.faqs.some((faq) =>
-        faq.groups?.some((group) => group.id === groupId),
-      );
-    }
-
-    function getVisibleCategories() {
-      return faqData.categories.filter((category) =>
-        hasFaqsForCategory(category.id),
-      );
-    }
-
-    function getVisibleGroups() {
-      return faqData.groups.filter((group) => hasFaqsForGroup(group.id));
-    }
-
     function renderCategories() {
       if (!categoriesElement || block.dataset.showCategories !== "true") {
         return;
       }
 
+      categoriesElement.hidden = false;
       categoriesElement.replaceChildren();
-
-      const visibleCategories = getVisibleCategories();
 
       const allButton = document.createElement("button");
 
@@ -474,7 +445,7 @@
 
       categoriesElement.appendChild(allButton);
 
-      visibleCategories.forEach((category) => {
+      faqData.categories.forEach((category) => {
         const button = document.createElement("button");
 
         button.type = "button";
@@ -500,8 +471,6 @@
 
         categoriesElement.appendChild(button);
       });
-
-      categoriesElement.hidden = visibleCategories.length === 0;
     }
 
     function renderGroups() {
@@ -509,9 +478,8 @@
         return;
       }
 
+      groupsElement.hidden = false;
       groupsElement.replaceChildren();
-
-      const visibleGroups = getVisibleGroups();
 
       const allButton = document.createElement("button");
 
@@ -535,7 +503,7 @@
 
       groupsElement.appendChild(allButton);
 
-      visibleGroups.forEach((group) => {
+      faqData.groups.forEach((group) => {
         const button = document.createElement("button");
 
         button.type = "button";
@@ -558,8 +526,6 @@
 
         groupsElement.appendChild(button);
       });
-
-      groupsElement.hidden = visibleGroups.length === 0;
     }
 
     try {
@@ -618,8 +584,7 @@
 
       if (activeCategory) {
         const defaultCategory = faqData.categories.find(
-          (category) =>
-            category.slug === activeCategory && hasFaqsForCategory(category.id),
+          (category) => category.slug === activeCategory,
         );
 
         activeCategory = defaultCategory?.id || "";
@@ -627,7 +592,7 @@
 
       if (activeGroup) {
         const defaultGroup = faqData.groups.find(
-          (group) => group.slug === activeGroup && hasFaqsForGroup(group.id),
+          (group) => group.slug === activeGroup,
         );
 
         activeGroup = defaultGroup?.id || "";
