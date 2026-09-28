@@ -1,16 +1,12 @@
-{{ 'faqflow.css' | asset_url | stylesheet_tag }}
-
 <div
   class="faqflow"
   data-faqflow
+  data-api-url="/apps/faqflow"
   data-show-search="{{ block.settings.show_search }}"
   data-show-categories="{{ block.settings.show_categories }}"
-  data-show-groups="{{ block.settings.show_groups }}"
   data-default-category="{{ block.settings.default_category | escape }}"
+  data-show-groups="{{ block.settings.show_groups }}"
   data-default-group="{{ block.settings.default_group | escape }}"
-  data-multiple-open="{{ block.settings.multiple_open }}"
-  data-empty-message="{{ block.settings.empty_message | escape }}"
-  data-enable-json-ld="{{ block.settings.enable_json_ld }}"
   data-category-style="{{ block.settings.category_style }}"
   data-layout-style="{{ block.settings.layout_style }}"
   data-accordion-style="{{ block.settings.accordion_style }}"
@@ -22,23 +18,22 @@
     --faqflow-accent-color: {{ block.settings.accent_color }};
     --faqflow-question-color: {{ block.settings.question_color }};
     --faqflow-answer-color: {{ block.settings.answer_color }};
+    --faqflow-border-width: {{ block.settings.border_width }}px;
     --faqflow-border-radius: {{ block.settings.border_radius }}px;
-    --faqflow-border-width: {% if block.settings.show_borders %}1px{% else %}0px{% endif %};
   "
 >
-  <div class="faqflow__header">
-    <h2 class="faqflow__heading">
-      {{ block.settings.heading | escape }}
-    </h2>
-  </div>
+  {% if block.settings.heading != blank %}
+    <div class="faqflow__header">
+      <h2 class="faqflow__heading">
+        {{ block.settings.heading | escape }}
+      </h2>
+    </div>
+  {% endif %}
 
   {% if block.settings.show_search %}
     <div class="faqflow__search">
-      <label
-        class="faqflow__search-label"
-        for="faqflow-search-{{ block.id }}"
-      >
-        Search FAQs
+      <label class="faqflow__search-label" for="faqflow-search-{{ block.id }}">
+        {{ block.settings.search_label | escape }}
       </label>
 
       <div class="faqflow__search-control">
@@ -46,18 +41,16 @@
           id="faqflow-search-{{ block.id }}"
           class="faqflow__search-input"
           type="search"
-          placeholder="Search frequently asked questions"
+          placeholder="{{ block.settings.search_placeholder | escape }}"
           autocomplete="off"
-          aria-label="Search frequently asked questions"
-          aria-controls="faqflow-list-{{ block.id }}"
-          data-faqflow-search
+          spellcheck="false"
+          aria-describedby="faqflow-search-meta-{{ block.id }}"
         >
 
         <button
-          type="button"
           class="faqflow__search-clear"
-          aria-label="Clear FAQ search"
-          data-faqflow-search-clear
+          type="button"
+          aria-label="{{ block.settings.clear_search_label | escape }}"
           hidden
         >
           ×
@@ -65,57 +58,52 @@
       </div>
 
       <div
+        id="faqflow-search-meta-{{ block.id }}"
         class="faqflow__search-meta"
-        data-faqflow-search-meta
         aria-live="polite"
-        aria-atomic="true"
       ></div>
     </div>
   {% endif %}
 
-  {% if block.settings.show_groups %}
-    <nav
-      class="faqflow__groups"
-      aria-label="FAQ groups"
-      data-faqflow-groups
-    ></nav>
-  {% endif %}
+  <div
+    class="faqflow__groups"
+    data-faqflow-groups
+    hidden
+  ></div>
 
-  {% if block.settings.show_categories %}
-    <nav
-      class="faqflow__categories"
-      aria-label="FAQ categories"
-      data-faqflow-categories
-    ></nav>
-  {% endif %}
+  <div
+    class="faqflow__categories"
+    data-faqflow-categories
+    hidden
+  ></div>
 
   <div
     class="faqflow__status"
     data-faqflow-status
-    role="status"
     aria-live="polite"
-    aria-atomic="true"
   >
-    Loading FAQs...
+    {{ block.settings.loading_text | escape }}
   </div>
 
   <div
-    id="faqflow-list-{{ block.id }}"
     class="faqflow__list"
     data-faqflow-list
   ></div>
-</div>
 
-<script
-  src="{{ 'faqflow.js' | asset_url }}"
-  defer
-></script>
+  <script type="application/ld+json" data-faqflow-jsonld></script>
+</div>
 
 {% schema %}
 {
   "name": "FAQFlow FAQs",
   "target": "section",
+  "stylesheet": "faqflow.css",
+  "javascript": "faqflow.js",
   "settings": [
+    {
+      "type": "header",
+      "content": "Content"
+    },
     {
       "type": "text",
       "id": "heading",
@@ -129,16 +117,28 @@
       "default": true
     },
     {
-      "type": "checkbox",
-      "id": "show_groups",
-      "label": "Show groups",
-      "default": true
+      "type": "text",
+      "id": "search_label",
+      "label": "Search label",
+      "default": "Search FAQs"
     },
     {
       "type": "text",
-      "id": "default_group",
-      "label": "Default group",
-      "info": "Enter a group slug, such as shipping. Leave blank to show all groups."
+      "id": "search_placeholder",
+      "label": "Search placeholder",
+      "default": "Search questions and answers..."
+    },
+    {
+      "type": "text",
+      "id": "clear_search_label",
+      "label": "Clear search label",
+      "default": "Clear search"
+    },
+    {
+      "type": "text",
+      "id": "loading_text",
+      "label": "Loading text",
+      "default": "Loading FAQs..."
     },
     {
       "type": "checkbox",
@@ -147,130 +147,10 @@
       "default": true
     },
     {
-      "type": "text",
-      "id": "default_category",
-      "label": "Default category",
-      "info": "Enter a category slug, such as shipping. Leave blank to show all FAQs."
-    },
-    {
-      "type": "select",
-      "id": "layout_style",
-      "label": "FAQ layout",
-      "options": [
-        {
-          "value": "accordion",
-          "label": "Accordion"
-        },
-        {
-          "value": "two_column",
-          "label": "Two columns"
-        }
-      ],
-      "default": "accordion"
-    },
-    {
-      "type": "select",
-      "id": "accordion_style",
-      "label": "FAQ style",
-      "options": [
-        {
-          "value": "default",
-          "label": "Default"
-        },
-        {
-          "value": "cards",
-          "label": "Cards"
-        },
-        {
-          "value": "minimal",
-          "label": "Minimal"
-        }
-      ],
-      "default": "default"
-    },
-    {
-      "type": "checkbox",
-      "id": "multiple_open",
-      "label": "Allow multiple FAQs to stay open",
-      "default": false
-    },
-    {
-      "type": "text",
-      "id": "empty_message",
-      "label": "Empty state message",
-      "default": "No FAQs found."
-    },
-    {
-      "type": "checkbox",
-      "id": "enable_json_ld",
-      "label": "Enable FAQ structured data",
-      "info": "Adds FAQPage JSON-LD structured data for published FAQs.",
-      "default": true
-    },
-    {
-      "type": "range",
-      "id": "content_width",
-      "label": "Content width",
-      "min": 600,
-      "max": 1400,
-      "step": 50,
-      "unit": "px",
-      "default": 1400
-    },
-    {
-      "type": "select",
-      "id": "heading_alignment",
-      "label": "Heading alignment",
-      "options": [
-        {
-          "value": "left",
-          "label": "Left"
-        },
-        {
-          "value": "center",
-          "label": "Center"
-        }
-      ],
-      "default": "left"
-    },
-    {
-      "type": "color",
-      "id": "accent_color",
-      "label": "Accent color",
-      "default": "#111111"
-    },
-    {
-      "type": "color",
-      "id": "question_color",
-      "label": "Question text color",
-      "default": "#111111"
-    },
-    {
-      "type": "color",
-      "id": "answer_color",
-      "label": "Answer text color",
-      "default": "#333333"
-    },
-    {
-      "type": "checkbox",
-      "id": "show_borders",
-      "label": "Show borders",
-      "default": true
-    },
-    {
-      "type": "range",
-      "id": "border_radius",
-      "label": "Border radius",
-      "min": 0,
-      "max": 24,
-      "step": 2,
-      "unit": "px",
-      "default": 6
-    },
-    {
       "type": "select",
       "id": "category_style",
       "label": "Category style",
+      "default": "pills",
       "options": [
         {
           "value": "pills",
@@ -284,8 +164,155 @@
           "value": "tabs",
           "label": "Tabs"
         }
-      ],
-      "default": "pills"
+      ]
+    },
+    {
+      "type": "text",
+      "id": "default_category",
+      "label": "Default category slug",
+      "info": "Optional. Leave blank to show all categories."
+    },
+    {
+      "type": "checkbox",
+      "id": "show_groups",
+      "label": "Show groups",
+      "default": false
+    },
+    {
+      "type": "text",
+      "id": "default_group",
+      "label": "Default group slug",
+      "info": "Optional. Leave blank to show all groups."
+    },
+    {
+      "type": "header",
+      "content": "Layout"
+    },
+    {
+      "type": "select",
+      "id": "layout_style",
+      "label": "FAQ layout",
+      "default": "accordion",
+      "options": [
+        {
+          "value": "accordion",
+          "label": "Accordion"
+        },
+        {
+          "value": "two_column",
+          "label": "Two columns"
+        }
+      ]
+    },
+    {
+      "type": "select",
+      "id": "accordion_style",
+      "label": "FAQ style",
+      "default": "default",
+      "options": [
+        {
+          "value": "default",
+          "label": "Default"
+        },
+        {
+          "value": "cards",
+          "label": "Cards"
+        },
+        {
+          "value": "minimal",
+          "label": "Minimal"
+        }
+      ]
+    },
+    {
+      "type": "header",
+      "content": "Visual customization"
+    },
+    {
+      "type": "select",
+      "id": "content_width",
+      "label": "Content width",
+      "default": "1200",
+      "options": [
+        {
+          "value": "640",
+          "label": "640px"
+        },
+        {
+          "value": "800",
+          "label": "800px"
+        },
+        {
+          "value": "1000",
+          "label": "1000px"
+        },
+        {
+          "value": "1200",
+          "label": "1200px"
+        },
+        {
+          "value": "1400",
+          "label": "1400px"
+        }
+      ]
+    },
+    {
+      "type": "select",
+      "id": "heading_alignment",
+      "label": "Heading alignment",
+      "default": "left",
+      "options": [
+        {
+          "value": "left",
+          "label": "Left"
+        },
+        {
+          "value": "center",
+          "label": "Center"
+        },
+        {
+          "value": "right",
+          "label": "Right"
+        }
+      ]
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Accent color",
+      "default": "#111111"
+    },
+    {
+      "type": "color",
+      "id": "question_color",
+      "label": "Question and heading color",
+      "default": "#111111"
+    },
+    {
+      "type": "color",
+      "id": "answer_color",
+      "label": "Answer color",
+      "default": "#333333"
+    },
+    {
+      "type": "range",
+      "id": "border_width",
+      "label": "Border width",
+      "min": 0,
+      "max": 3,
+      "step": 1,
+      "unit": "px",
+      "default": 1
+    },
+    {
+      "type": "range",
+      "id": "border_radius",
+      "label": "Border radius",
+      "min": 0,
+      "max": 24,
+      "step": 1,
+      "unit": "px",
+      "default": 6
     }
   ]
 }
