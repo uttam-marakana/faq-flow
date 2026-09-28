@@ -119,6 +119,7 @@
   outline: none;
   outline-offset: 2px;
 }
+
 /* FAQFlow search browser controls */
 .faqflow__search-input::-webkit-search-decoration,
 .faqflow__search-input::-webkit-search-cancel-button,
@@ -803,7 +804,7 @@
     width: 100%;
     max-width: 100%;
     min-height: 44px;
-    padding: 11px 12px;
+    padding: 11px 44px 11px 12px;
     font-size: 14px;
   }
   .faqflow__groups {
@@ -817,6 +818,7 @@
     overflow: visible;
   }
   .faqflow__group {
+    touch-action: manipulation;
     flex: 0 0 auto;
     width: auto;
     max-width: 100%;
@@ -837,6 +839,7 @@
     overflow: visible;
   }
   .faqflow__category {
+    touch-action: manipulation;
     flex: 0 0 auto;
     width: auto;
     max-width: 100%;
@@ -899,6 +902,7 @@
     min-width: 0;
   }
   .faqflow__question {
+    touch-action: manipulation;
     width: 100%;
     max-width: 100%;
     min-width: 0;
@@ -939,7 +943,7 @@
     width: 100%;
     max-width: 100%;
     min-height: 42px;
-    padding: 10px 11px;
+    padding: 10px 42px 10px 11px;
     font-size: 14px;
   }
   .faqflow__groups {
@@ -1007,43 +1011,34 @@
   .faqflow__heading {
     font-size: 23px;
   }
-
   .faqflow__groups {
     gap: 4px;
   }
-
   .faqflow__group {
     max-width: 100%;
     padding: 7px 9px;
     font-size: 12px;
   }
-
   .faqflow__categories {
     gap: 4px;
   }
-
   .faqflow__category {
     max-width: 100%;
     padding: 7px 9px;
     font-size: 12px;
   }
-
   .faqflow[data-category-style="tabs"] .faqflow__categories {
     gap: 9px;
   }
-
   .faqflow[data-category-style="tabs"] .faqflow__category {
     padding: 7px 2px;
   }
-
   .faqflow__question {
     padding-right: 32px;
   }
-
   .faqflow__question::after {
     right: 0;
   }
-
   .faqflow__answer {
     font-size: 13px;
   }
@@ -1054,21 +1049,17 @@
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
   }
-
   .faqflow[data-layout-style="two_column"] .faqflow__item {
     border-radius: var(--faqflow-border-radius, 6px);
   }
-
   .faqflow[data-layout-style="two_column"][data-accordion-style="cards"]
     .faqflow__item {
     margin-bottom: 12px;
   }
-
   .faqflow[data-layout-style="two_column"][data-accordion-style="cards"]
     .faqflow__item:last-child {
     margin-bottom: 0;
   }
-
   .faqflow[data-layout-style="two_column"][data-accordion-style="minimal"]
     .faqflow__item {
     border-right: 0;
