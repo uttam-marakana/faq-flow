@@ -20,7 +20,6 @@ export async function loader({ request }) {
   const url = new URL(request.url);
 
   const productId = url.searchParams.get("product_id")?.trim() || "";
-
   const collectionId = url.searchParams.get("collection_id")?.trim() || "";
 
   const productGid = /^\d+$/.test(productId)
@@ -118,6 +117,11 @@ export async function loader({ request }) {
 
   return Response.json({
     success: true,
+
+    context: {
+      productId: productGid,
+      collectionId: collectionGid,
+    },
 
     faqs: faqs.map((faq) => ({
       id: faq.id,
