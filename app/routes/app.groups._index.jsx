@@ -189,8 +189,8 @@ export default function Groups() {
             {search ? (
               <s-text tone="neutral">
                 {filteredGroups.length}{" "}
-                {filteredGroups.length === 1 ? "result" : "results"} for "
-                {search}"
+                {filteredGroups.length === 1 ? "result" : "results"} for &quot;
+                {search}&quot;
               </s-text>
             ) : null}
           </s-stack>
