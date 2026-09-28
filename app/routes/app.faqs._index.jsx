@@ -3,7 +3,7 @@ import { Form, useLoaderData, useNavigation, useSubmit } from "react-router";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 6;
 
 export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
@@ -79,14 +79,7 @@ export async function loader({ request }) {
       category: true,
     },
 
-    orderBy: [
-      {
-        sortOrder: "asc",
-      },
-      {
-        createdAt: "desc",
-      },
-    ],
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }, { id: "asc" }],
 
     skip: (currentPage - 1) * PAGE_SIZE,
     take: PAGE_SIZE,
@@ -288,7 +281,6 @@ export default function FAQs() {
         Create FAQ
       </s-button>
 
-      {/* 1. FAQ Filters */}
       <s-section>
         <s-stack direction="block" gap="base">
           <s-stack direction="block" gap="small">
@@ -352,7 +344,6 @@ export default function FAQs() {
         </s-stack>
       </s-section>
 
-      {/* 2. FAQ List */}
       <s-section>
         <s-stack direction="block" gap="base">
           <s-stack
@@ -461,7 +452,6 @@ export default function FAQs() {
         </s-stack>
       </s-section>
 
-      {/* 3. FAQ Pagination */}
       {pagination.totalFaqs > 0 ? (
         <s-section>
           <s-stack
@@ -481,9 +471,16 @@ export default function FAQs() {
               Previous
             </s-button>
 
-            <s-text>
-              Page {pagination.page} of {pagination.totalPages}
-            </s-text>
+            <s-stack direction="inline" gap="small" alignItems="center">
+              <s-text>
+                Page {pagination.page} of {pagination.totalPages}
+              </s-text>
+
+              <s-text tone="neutral">
+                {pagination.totalFaqs}{" "}
+                {pagination.totalFaqs === 1 ? "FAQ" : "FAQs"}
+              </s-text>
+            </s-stack>
 
             <s-button
               href={
