@@ -697,6 +697,114 @@
   margin-bottom: 0;
 }
 
+/* FAQFlow pagination */
+
+.faqflow__pagination {
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 24px 0 0;
+  padding: 0;
+}
+
+.faqflow__pagination-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-width: 88px;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 8px 14px;
+  border: 1px solid var(--faqflow-accent-color, #111111);
+  border-radius: var(--faqflow-border-radius, 6px);
+  background: transparent;
+  color: var(--faqflow-accent-color, #111111);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1.4;
+  text-align: center;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.faqflow__pagination-button:hover:not(:disabled) {
+  background: var(--faqflow-accent-color, #111111);
+  color: #ffffff;
+  border-color: var(--faqflow-accent-color, #111111);
+}
+
+.faqflow__pagination-button:focus-visible {
+  outline: 2px solid var(--faqflow-accent-color, #111111);
+  outline-offset: 3px;
+}
+
+.faqflow__pagination-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.faqflow__pagination-info {
+  display: inline-flex;
+  min-width: 90px;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--faqflow-answer-color, #333333);
+  font: inherit;
+  line-height: 1.4;
+  text-align: center;
+  white-space: nowrap;
+}
+
+@media screen and (max-width: 599px) {
+  .faqflow__pagination {
+    gap: 8px;
+    margin-top: 20px;
+  }
+
+  .faqflow__pagination-button {
+    min-width: 0;
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+
+  .faqflow__pagination-info {
+    min-width: 72px;
+    min-height: 40px;
+    padding: 8px 6px;
+    font-size: 13px;
+  }
+}
+
+@media screen and (max-width: 374px) {
+  .faqflow__pagination {
+    gap: 6px;
+    margin-top: 18px;
+  }
+
+  .faqflow__pagination-button {
+    padding: 7px 9px;
+    font-size: 13px;
+  }
+
+  .faqflow__pagination-info {
+    min-width: 64px;
+    padding: 7px 4px;
+    font-size: 12px;
+  }
+}
+
 /* FAQFlow large desktop */
 @media screen and (min-width: 1200px) {
   .faqflow {
