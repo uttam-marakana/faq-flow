@@ -201,6 +201,12 @@
 
     const searchElement = block.querySelector("[data-faqflow-search]");
 
+    const searchClearElement = block.querySelector(
+      "[data-faqflow-search-clear]",
+    );
+
+    const searchMetaElement = block.querySelector("[data-faqflow-search-meta]");
+
     const productId = block.dataset.productId?.trim() || "";
 
     const collectionId = block.dataset.collectionId?.trim() || "";
@@ -222,6 +228,69 @@
 
       statusElement.textContent = message;
       statusElement.hidden = hidden;
+    }
+
+    function normalizeSearchText(value) {
+      return String(value || "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function highlightText(value, searchTerm) {
+      const text = String(value || "");
+
+      if (!searchTerm) {
+        return escapeHtml(text);
+      }
+
+      const normalizedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      if (!normalizedTerm) {
+        return escapeHtml(text);
+      }
+
+      const expression = new RegExp(`(${normalizedTerm})`, "gi");
+
+      return escapeHtml(text).replace(
+        expression,
+        '<mark class="faqflow__search-highlight">$1</mark>',
+      );
+    }
+
+    function updateSearchControls(resultCount, totalCount) {
+      const searchTerm = searchElement?.value.trim() || "";
+
+      if (searchClearElement) {
+        searchClearElement.hidden = !searchTerm;
+      }
+
+      if (!searchMetaElement) {
+        return;
+      }
+
+      if (!searchTerm) {
+        searchMetaElement.textContent = totalCount
+          ? `${totalCount} ${totalCount === 1 ? "FAQ" : "FAQs"}`
+          : "";
+        return;
+      }
+
+      if (!resultCount) {
+        searchMetaElement.textContent = `No FAQs found for "${searchTerm}".`;
+        return;
+      }
+
+      searchMetaElement.textContent = `${resultCount} ${resultCount === 1 ? "FAQ" : "FAQs"} found for "${searchTerm}".`;
     }
 
     function getGroupSortOrder(faq, groupId) {
@@ -256,7 +325,7 @@
         return;
       }
 
-      const searchTerm = searchElement?.value.trim().toLowerCase() || "";
+      const searchTerm = normalizeSearchText(searchElement?.value || "");
 
       const filteredFaqs = faqData.faqs.filter((faq) => {
         const matchesCategory =
@@ -265,8 +334,7 @@
         const matchesGroup =
           !activeGroup || faq.groups?.some((group) => group.id === activeGroup);
 
-        const questionText = faq.question.toLowerCase();
-
+        const questionText = normalizeSearchText(faq.question);
         const answerText = faqHtmlToSearchText(faq.answer);
 
         const matchesSearch =
@@ -279,10 +347,30 @@
 
       const orderedFaqs = sortFaqsByActiveGroup(filteredFaqs);
 
+      updateSearchControls(
+        orderedFaqs.length,
+        faqData.faqs.filter((faq) => {
+          const matchesCategory =
+            !activeCategory || faq.category?.id === activeCategory;
+
+          const matchesGroup =
+            !activeGroup ||
+            faq.groups?.some((group) => group.id === activeGroup);
+
+          return matchesCategory && matchesGroup;
+        }).length,
+      );
+
       listElement.replaceChildren();
 
       if (!orderedFaqs.length) {
-        setStatus(emptyMessage, false);
+        const searchTerm = searchElement?.value.trim() || "";
+
+        setStatus(
+          searchTerm ? `No FAQs found for "${searchTerm}".` : emptyMessage,
+          false,
+        );
+
         return;
       }
 
@@ -300,7 +388,13 @@
         const question = document.createElement("summary");
 
         question.className = "faqflow__question";
-        question.textContent = faq.question;
+        const searchTerm = normalizeSearchText(searchElement?.value || "");
+
+        if (searchTerm) {
+          question.innerHTML = highlightText(faq.question, searchTerm);
+        } else {
+          question.textContent = faq.question;
+        }
 
         const answer = document.createElement("div");
 
@@ -523,7 +617,33 @@
       setStatus("Unable to load FAQs right now.", false);
     }
 
-    searchElement?.addEventListener("input", renderFaqs);
+    let searchTimer = null;
+
+    searchElement?.addEventListener("input", () => {
+      window.clearTimeout(searchTimer);
+
+      searchTimer = window.setTimeout(() => {
+        renderFaqs();
+      }, 150);
+    });
+
+    searchClearElement?.addEventListener("click", () => {
+      if (!searchElement) {
+        return;
+      }
+
+      searchElement.value = "";
+      searchElement.focus();
+
+      renderFaqs();
+    });
+
+    searchElement?.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && searchElement.value) {
+        searchElement.value = "";
+        renderFaqs();
+      }
+    });
   }
 
   blocks.forEach((block) => {
