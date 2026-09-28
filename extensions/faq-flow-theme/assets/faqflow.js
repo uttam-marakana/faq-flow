@@ -149,6 +149,7 @@
     const mainEntity = window.__faqflowJsonLdFaqs
       .map((faq) => {
         const question = faq.question?.trim() || "";
+
         const answer = faqHtmlToText(faq.answer);
 
         if (!question || !answer) {
@@ -224,6 +225,7 @@
     );
 
     const productId = block.dataset.productId?.trim() || "";
+
     const collectionId = block.dataset.collectionId?.trim() || "";
 
     const paginationEnabled = block.dataset.paginationEnabled === "true";
@@ -266,52 +268,34 @@
         .toLowerCase();
     }
 
-    function resetPagination() {
-      currentPage = 1;
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
     }
 
-    function getFilteredFaqs() {
-      if (!faqData) {
-        return [];
+    function highlightText(value, searchTerm) {
+      const text = String(value || "");
+
+      if (!searchTerm) {
+        return escapeHtml(text);
       }
 
-      const searchTerm = normalizeSearchText(searchElement?.value || "");
+      const normalizedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-      return faqData.faqs.filter((faq) => {
-        const matchesCategory =
-          !activeCategory || faq.category?.id === activeCategory;
-
-        const matchesGroup =
-          !activeGroup || faq.groups?.some((group) => group.id === activeGroup);
-
-        const questionText =
-          faq._searchQuestion || normalizeSearchText(faq.question);
-
-        const answerText = faq._searchAnswer || faqHtmlToSearchText(faq.answer);
-
-        const matchesSearch =
-          !searchTerm ||
-          questionText.includes(searchTerm) ||
-          answerText.includes(searchTerm);
-
-        return matchesCategory && matchesGroup && matchesSearch;
-      });
-    }
-
-    function getFilterMatchedFaqs() {
-      if (!faqData) {
-        return [];
+      if (!normalizedTerm) {
+        return escapeHtml(text);
       }
 
-      return faqData.faqs.filter((faq) => {
-        const matchesCategory =
-          !activeCategory || faq.category?.id === activeCategory;
+      const expression = new RegExp(`(${normalizedTerm})`, "gi");
 
-        const matchesGroup =
-          !activeGroup || faq.groups?.some((group) => group.id === activeGroup);
-
-        return matchesCategory && matchesGroup;
-      });
+      return escapeHtml(text).replace(
+        expression,
+        '<mark class="faqflow__search-highlight">$1</mark>',
+      );
     }
 
     function updateSearchControls(resultCount, totalCount) {
@@ -335,6 +319,7 @@
 
       if (!resultCount) {
         searchMetaElement.textContent = `No FAQs found for "${searchTerm}".`;
+
         return;
       }
 
@@ -375,6 +360,66 @@
       });
     }
 
+    function hasFaqsForCategory(categoryId) {
+      return faqData.faqs.some((faq) => faq.category?.id === categoryId);
+    }
+
+    function hasFaqsForGroup(groupId) {
+      return faqData.faqs.some((faq) =>
+        faq.groups?.some((group) => group.id === groupId),
+      );
+    }
+
+    function getVisibleCategories() {
+      return faqData.categories.filter((category) =>
+        hasFaqsForCategory(category.id),
+      );
+    }
+
+    function getVisibleGroups() {
+      return faqData.groups.filter((group) => hasFaqsForGroup(group.id));
+    }
+
+    function getFilteredFaqs() {
+      const searchTerm = normalizeSearchText(searchElement?.value || "");
+
+      return faqData.faqs.filter((faq) => {
+        const matchesCategory =
+          !activeCategory || faq.category?.id === activeCategory;
+
+        const matchesGroup =
+          !activeGroup || faq.groups?.some((group) => group.id === activeGroup);
+
+        const questionText =
+          faq._searchQuestion || normalizeSearchText(faq.question);
+
+        const answerText = faq._searchAnswer || faqHtmlToSearchText(faq.answer);
+
+        const matchesSearch =
+          !searchTerm ||
+          questionText.includes(searchTerm) ||
+          answerText.includes(searchTerm);
+
+        return matchesCategory && matchesGroup && matchesSearch;
+      });
+    }
+
+    function getFilterMatchedFaqs() {
+      return faqData.faqs.filter((faq) => {
+        const matchesCategory =
+          !activeCategory || faq.category?.id === activeCategory;
+
+        const matchesGroup =
+          !activeGroup || faq.groups?.some((group) => group.id === activeGroup);
+
+        return matchesCategory && matchesGroup;
+      });
+    }
+
+    function resetPagination() {
+      currentPage = 1;
+    }
+
     function renderPagination(totalItems) {
       if (!paginationElement) {
         return;
@@ -411,30 +456,6 @@
       if (paginationInfoElement) {
         paginationInfoElement.textContent = `Page ${currentPage} of ${totalPages}`;
       }
-    }
-
-    function getVisibleCategories() {
-      return faqData.categories.filter((category) =>
-        faqData.faqs.some((faq) => faq.category?.id === category.id),
-      );
-    }
-
-    function getVisibleGroups() {
-      return faqData.groups.filter((group) =>
-        faqData.faqs.some((faq) =>
-          faq.groups?.some((faqGroup) => faqGroup.id === group.id),
-        ),
-      );
-    }
-
-    function hasFaqsForCategory(categoryId) {
-      return faqData.faqs.some((faq) => faq.category?.id === categoryId);
-    }
-
-    function hasFaqsForGroup(groupId) {
-      return faqData.faqs.some((faq) =>
-        faq.groups?.some((group) => group.id === groupId),
-      );
     }
 
     function renderFaqs() {
@@ -497,11 +518,17 @@
         const question = document.createElement("summary");
 
         question.className = "faqflow__question";
-        question.textContent = faq.question || "";
+
+        if (searchTerm) {
+          question.innerHTML = highlightText(faq.question, searchTerm);
+        } else {
+          question.textContent = faq.question || "";
+        }
 
         const answer = document.createElement("div");
 
         answer.className = "faqflow__answer";
+
         answer.innerHTML = sanitizeFaqHtml(faq.answer);
 
         item.append(question, answer);
@@ -585,6 +612,7 @@
 
         button.addEventListener("click", () => {
           activeCategory = category.id;
+
           resetPagination();
 
           renderCategories();
@@ -652,6 +680,7 @@
 
         button.addEventListener("click", () => {
           activeGroup = group.id;
+
           resetPagination();
 
           renderGroups();
