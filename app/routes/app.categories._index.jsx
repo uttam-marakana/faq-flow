@@ -136,8 +136,8 @@ export default function CategoriesPage() {
             {search ? (
               <s-text tone="neutral">
                 {filteredCategories.length}{" "}
-                {filteredCategories.length === 1 ? "result" : "results"} for "
-                {search}"
+                {filteredCategories.length === 1 ? "result" : "results"} for
+                &quot;{search}&quot;
               </s-text>
             ) : null}
           </s-stack>
