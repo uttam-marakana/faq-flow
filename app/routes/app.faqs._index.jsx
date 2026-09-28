@@ -288,12 +288,13 @@ export default function FAQs() {
         Create FAQ
       </s-button>
 
+      {/* 1. FAQ Filters */}
       <s-section>
-        <s-stack direction="block" gap="large">
+        <s-stack direction="block" gap="base">
           <s-stack direction="block" gap="small">
             <s-heading>FAQ Management</s-heading>
 
-            <s-text color="subdued">
+            <s-text tone="neutral">
               Create, manage, publish, and organize your store&apos;s frequently
               asked questions.
             </s-text>
@@ -348,9 +349,12 @@ export default function FAQs() {
               </s-stack>
             </s-stack>
           </Form>
+        </s-stack>
+      </s-section>
 
-          <s-divider />
-
+      {/* 2. FAQ List */}
+      <s-section>
+        <s-stack direction="block" gap="base">
           <s-stack
             direction="inline"
             justifyContent="space-between"
@@ -360,7 +364,7 @@ export default function FAQs() {
             <s-heading>FAQs ({pagination.totalFaqs})</s-heading>
 
             {pagination.totalFaqs > 0 ? (
-              <s-text color="subdued">
+              <s-text tone="neutral">
                 Page {pagination.page} of {pagination.totalPages}
               </s-text>
             ) : null}
@@ -376,7 +380,7 @@ export default function FAQs() {
               <s-stack direction="block" gap="base" alignItems="center">
                 <s-heading>No FAQs found</s-heading>
 
-                <s-text color="subdued">
+                <s-text tone="neutral">
                   {hasActiveFilters
                     ? "Try changing your filters."
                     : "Create your first FAQ to get started."}
@@ -414,7 +418,7 @@ export default function FAQs() {
                         <s-stack direction="block" gap="small">
                           <s-heading>{faq.question}</s-heading>
 
-                          <s-text color="subdued">
+                          <s-text tone="neutral">
                             {faq.category?.name || "Uncategorized"}
                           </s-text>
                         </s-stack>
@@ -424,7 +428,7 @@ export default function FAQs() {
                         </s-badge>
                       </s-stack>
 
-                      <s-text color="subdued">{answerPreview}</s-text>
+                      <s-text tone="neutral">{answerPreview}</s-text>
 
                       <s-stack direction="inline" gap="small">
                         <s-button href={`/app/faqs/${faq.id}`}>Edit</s-button>
@@ -454,47 +458,46 @@ export default function FAQs() {
               })}
             </s-stack>
           )}
-
-          {pagination.totalFaqs > 0 ? (
-            <>
-              <s-divider />
-
-              <s-stack
-                direction="inline"
-                justifyContent="space-between"
-                alignItems="center"
-                gap="base"
-              >
-                <s-button
-                  href={
-                    pagination.page > 1
-                      ? buildPageUrl(filters, pagination.page - 1)
-                      : undefined
-                  }
-                  disabled={pagination.page <= 1}
-                >
-                  Previous
-                </s-button>
-
-                <s-text>
-                  Page {pagination.page} of {pagination.totalPages}
-                </s-text>
-
-                <s-button
-                  href={
-                    pagination.page < pagination.totalPages
-                      ? buildPageUrl(filters, pagination.page + 1)
-                      : undefined
-                  }
-                  disabled={pagination.page >= pagination.totalPages}
-                >
-                  Next
-                </s-button>
-              </s-stack>
-            </>
-          ) : null}
         </s-stack>
       </s-section>
+
+      {/* 3. FAQ Pagination */}
+      {pagination.totalFaqs > 0 ? (
+        <s-section>
+          <s-stack
+            direction="inline"
+            justifyContent="space-between"
+            alignItems="center"
+            gap="base"
+          >
+            <s-button
+              href={
+                pagination.page > 1
+                  ? buildPageUrl(filters, pagination.page - 1)
+                  : undefined
+              }
+              disabled={pagination.page <= 1}
+            >
+              Previous
+            </s-button>
+
+            <s-text>
+              Page {pagination.page} of {pagination.totalPages}
+            </s-text>
+
+            <s-button
+              href={
+                pagination.page < pagination.totalPages
+                  ? buildPageUrl(filters, pagination.page + 1)
+                  : undefined
+              }
+              disabled={pagination.page >= pagination.totalPages}
+            >
+              Next
+            </s-button>
+          </s-stack>
+        </s-section>
+      ) : null}
     </s-page>
   );
 }
