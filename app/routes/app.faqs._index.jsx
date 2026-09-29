@@ -1,4 +1,11 @@
-import { Form, useLoaderData, useNavigation, useSubmit } from "react-router";
+import React from "react";
+import {
+  Form,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+  useSubmit,
+} from "react-router";
 
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -79,7 +86,17 @@ export async function loader({ request }) {
       category: true,
     },
 
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }, { id: "asc" }],
+    orderBy: [
+      {
+        sortOrder: "asc",
+      },
+      {
+        createdAt: "desc",
+      },
+      {
+        id: "asc",
+      },
+    ],
 
     skip: (currentPage - 1) * PAGE_SIZE,
     take: PAGE_SIZE,
@@ -110,6 +127,120 @@ export async function action({ request }) {
   const formData = await request.formData();
 
   const intent = formData.get("intent")?.toString() || "";
+
+  if (
+    intent === "bulk-publish" ||
+    intent === "bulk-draft" ||
+    intent === "bulk-delete"
+  ) {
+    const rawFaqIds = formData.getAll("faqIds");
+
+    const faqIds = [
+      ...new Set(
+        rawFaqIds.map((value) => value?.toString().trim()).filter(Boolean),
+      ),
+    ];
+
+    if (!faqIds.length) {
+      return {
+        success: false,
+        action: "bulk",
+        error: "Select at least one FAQ.",
+      };
+    }
+
+    if (faqIds.length > PAGE_SIZE) {
+      return {
+        success: false,
+        action: "bulk",
+        error: "Too many FAQs selected.",
+      };
+    }
+
+    const existingFaqs = await prisma.faq.findMany({
+      where: {
+        id: {
+          in: faqIds,
+        },
+        shop: session.shop,
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (existingFaqs.length !== faqIds.length) {
+      return {
+        success: false,
+        action: "bulk",
+        error: "One or more selected FAQs could not be found.",
+      };
+    }
+
+    const existingFaqIds = existingFaqs.map((faq) => faq.id);
+
+    if (intent === "bulk-publish") {
+      const result = await prisma.faq.updateMany({
+        where: {
+          id: {
+            in: existingFaqIds,
+          },
+          shop: session.shop,
+          status: {
+            not: "published",
+          },
+        },
+        data: {
+          status: "published",
+        },
+      });
+
+      return {
+        success: true,
+        action: "bulk-publish",
+        count: result.count,
+      };
+    }
+
+    if (intent === "bulk-draft") {
+      const result = await prisma.faq.updateMany({
+        where: {
+          id: {
+            in: existingFaqIds,
+          },
+          shop: session.shop,
+          status: {
+            not: "draft",
+          },
+        },
+        data: {
+          status: "draft",
+        },
+      });
+
+      return {
+        success: true,
+        action: "bulk-draft",
+        count: result.count,
+      };
+    }
+
+    const result = await prisma.faq.deleteMany({
+      where: {
+        id: {
+          in: existingFaqIds,
+        },
+        shop: session.shop,
+      },
+    });
+
+    return {
+      success: true,
+      action: "bulk-delete",
+      count: result.count,
+    };
+  }
 
   const faqId = formData.get("faqId")?.toString() || "";
 
@@ -228,8 +359,12 @@ function getAnswerPreview(answer) {
 export default function FAQs() {
   const { faqs, categories, filters, pagination } = useLoaderData();
 
+  const actionData = useActionData();
+
   const navigation = useNavigation();
   const submit = useSubmit();
+
+  const [selectedFaqIds, setSelectedFaqIds] = React.useState([]);
 
   const isSubmitting = navigation.state === "submitting";
 
@@ -237,6 +372,97 @@ export default function FAQs() {
     isSubmitting && navigation.formData?.get("faqId")
       ? navigation.formData.get("faqId").toString()
       : null;
+
+  const submittingIntent =
+    isSubmitting && navigation.formData?.get("intent")
+      ? navigation.formData.get("intent").toString()
+      : null;
+
+  const visibleFaqIds = React.useMemo(() => faqs.map((faq) => faq.id), [faqs]);
+
+  const selectedVisibleFaqIds = selectedFaqIds.filter((faqId) =>
+    visibleFaqIds.includes(faqId),
+  );
+
+  const selectedCount = selectedVisibleFaqIds.length;
+
+  const allVisibleSelected = faqs.length > 0 && selectedCount === faqs.length;
+
+  const someVisibleSelected = selectedCount > 0 && selectedCount < faqs.length;
+
+  React.useEffect(() => {
+    setSelectedFaqIds((currentIds) =>
+      currentIds.filter((faqId) => visibleFaqIds.includes(faqId)),
+    );
+  }, [visibleFaqIds]);
+
+  React.useEffect(() => {
+    if (actionData?.success && actionData.action?.startsWith("bulk-")) {
+      setSelectedFaqIds([]);
+    }
+  }, [actionData]);
+
+  function handleSelectFaq(faqId, checked) {
+    setSelectedFaqIds((currentIds) => {
+      if (checked) {
+        if (currentIds.includes(faqId)) {
+          return currentIds;
+        }
+
+        return [...currentIds, faqId];
+      }
+
+      return currentIds.filter((id) => id !== faqId);
+    });
+  }
+
+  function handleSelectAll(checked) {
+    if (checked) {
+      setSelectedFaqIds((currentIds) => [
+        ...new Set([...currentIds, ...visibleFaqIds]),
+      ]);
+
+      return;
+    }
+
+    setSelectedFaqIds((currentIds) =>
+      currentIds.filter((faqId) => !visibleFaqIds.includes(faqId)),
+    );
+  }
+
+  function handleClearSelection() {
+    setSelectedFaqIds([]);
+  }
+
+  function handleBulkAction(intent) {
+    if (!selectedVisibleFaqIds.length) {
+      return;
+    }
+
+    if (intent === "bulk-delete") {
+      const confirmed = window.confirm(
+        `Are you sure you want to delete ${selectedVisibleFaqIds.length} selected ${
+          selectedVisibleFaqIds.length === 1 ? "FAQ" : "FAQs"
+        }?`,
+      );
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    const formData = new FormData();
+
+    formData.append("intent", intent);
+
+    selectedVisibleFaqIds.forEach((faqId) => {
+      formData.append("faqIds", faqId);
+    });
+
+    submit(formData, {
+      method: "post",
+    });
+  }
 
   function handleDelete(faqId) {
     const confirmed = window.confirm(
@@ -274,6 +500,21 @@ export default function FAQs() {
     Boolean(filters.search) ||
     Boolean(filters.status) ||
     Boolean(filters.categoryId);
+
+  const bulkActionMessage =
+    actionData?.success && actionData?.action === "bulk-publish"
+      ? `${actionData.count} ${
+          actionData.count === 1 ? "FAQ was" : "FAQs were"
+        } published.`
+      : actionData?.success && actionData?.action === "bulk-draft"
+        ? `${actionData.count} ${
+            actionData.count === 1 ? "FAQ was" : "FAQs were"
+          } moved to draft.`
+        : actionData?.success && actionData?.action === "bulk-delete"
+          ? `${actionData.count} ${
+              actionData.count === 1 ? "FAQ was" : "FAQs were"
+            } deleted.`
+          : null;
 
   return (
     <s-page heading="FAQs">
@@ -352,7 +593,19 @@ export default function FAQs() {
             alignItems="center"
             gap="base"
           >
-            <s-heading>FAQs ({pagination.totalFaqs})</s-heading>
+            <s-stack direction="inline" gap="base" alignItems="center">
+              <s-checkbox
+                label="Select all FAQs on this page"
+                checked={allVisibleSelected}
+                indeterminate={someVisibleSelected}
+                disabled={isSubmitting || faqs.length === 0}
+                onChange={(event) =>
+                  handleSelectAll(event.currentTarget.checked)
+                }
+              />
+
+              <s-heading>FAQs ({pagination.totalFaqs})</s-heading>
+            </s-stack>
 
             {pagination.totalFaqs > 0 ? (
               <s-text tone="neutral">
@@ -360,6 +613,74 @@ export default function FAQs() {
               </s-text>
             ) : null}
           </s-stack>
+
+          {selectedCount > 0 ? (
+            <s-box
+              padding="base"
+              border="base"
+              borderRadius="base"
+              background="subdued"
+            >
+              <s-stack
+                direction="inline"
+                justifyContent="space-between"
+                alignItems="center"
+                gap="base"
+              >
+                <s-stack direction="inline" gap="base" alignItems="center">
+                  <s-text>
+                    {selectedCount} {selectedCount === 1 ? "FAQ" : "FAQs"}{" "}
+                    selected
+                  </s-text>
+
+                  <s-button
+                    onClick={handleClearSelection}
+                    disabled={isSubmitting}
+                  >
+                    Clear selection
+                  </s-button>
+                </s-stack>
+
+                <s-stack direction="inline" gap="small">
+                  <s-button
+                    variant="primary"
+                    onClick={() => handleBulkAction("bulk-publish")}
+                    loading={
+                      submittingIntent === "bulk-publish" && isSubmitting
+                    }
+                    disabled={isSubmitting}
+                  >
+                    Publish
+                  </s-button>
+
+                  <s-button
+                    onClick={() => handleBulkAction("bulk-draft")}
+                    loading={submittingIntent === "bulk-draft" && isSubmitting}
+                    disabled={isSubmitting}
+                  >
+                    Move to draft
+                  </s-button>
+
+                  <s-button
+                    tone="critical"
+                    onClick={() => handleBulkAction("bulk-delete")}
+                    loading={submittingIntent === "bulk-delete" && isSubmitting}
+                    disabled={isSubmitting}
+                  >
+                    Delete
+                  </s-button>
+                </s-stack>
+              </s-stack>
+            </s-box>
+          ) : null}
+
+          {actionData?.error ? (
+            <s-banner tone="critical">{actionData.error}</s-banner>
+          ) : null}
+
+          {bulkActionMessage ? (
+            <s-banner tone="success">{bulkActionMessage}</s-banner>
+          ) : null}
 
           {faqs.length === 0 ? (
             <s-box
@@ -391,6 +712,8 @@ export default function FAQs() {
 
                 const isFaqSubmitting = submittingFaqId === faq.id;
 
+                const isSelected = selectedVisibleFaqIds.includes(faq.id);
+
                 return (
                   <s-box
                     key={faq.id}
@@ -406,12 +729,29 @@ export default function FAQs() {
                         alignItems="start"
                         gap="base"
                       >
-                        <s-stack direction="block" gap="small">
-                          <s-heading>{faq.question}</s-heading>
+                        <s-stack
+                          direction="inline"
+                          gap="base"
+                          alignItems="start"
+                        >
+                          <s-checkbox
+                            checked={isSelected}
+                            disabled={isSubmitting}
+                            onChange={(event) =>
+                              handleSelectFaq(
+                                faq.id,
+                                event.currentTarget.checked,
+                              )
+                            }
+                          />
 
-                          <s-text tone="neutral">
-                            {faq.category?.name || "Uncategorized"}
-                          </s-text>
+                          <s-stack direction="block" gap="small">
+                            <s-heading>{faq.question}</s-heading>
+
+                            <s-text tone="neutral">
+                              {faq.category?.name || "Uncategorized"}
+                            </s-text>
+                          </s-stack>
                         </s-stack>
 
                         <s-badge tone={getStatusTone(faq.status)}>
