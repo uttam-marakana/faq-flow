@@ -1,5 +1,4 @@
 /* FAQFlow global box sizing */
-
 .faqflow,
 .faqflow \\\*,
 .faqflow \\\*::before,
@@ -8,7 +7,6 @@
 }
 
 /* FAQFlow Shopify app block wrapper */
-
 .shopify-app-block:has(.faqflow) {
   display: block;
   width: 100%;
@@ -22,7 +20,6 @@
 }
 
 /* FAQFlow base layout */
-
 .faqflow {
   display: block;
   width: 100%;
@@ -34,7 +31,6 @@
 }
 
 /* Page width */
-
 .faqflow--page-width {
   width: 100%;
   max-width: 1400px;
@@ -44,7 +40,6 @@
 }
 
 /* Full width */
-
 .faqflow--full-width {
   width: 100%;
   max-width: none;
@@ -54,7 +49,6 @@
 }
 
 /* FAQFlow viewport overflow protection */
-
 .faqflow,
 .faqflow__header,
 .faqflow__search,
@@ -69,7 +63,6 @@
 }
 
 /* FAQFlow heading container */
-
 .faqflow__header {
   display: block;
   width: 100%;
@@ -82,7 +75,6 @@
 }
 
 /* FAQFlow heading */
-
 .faqflow__heading {
   display: block;
   width: 100%;
@@ -96,7 +88,6 @@
 }
 
 /* FAQFlow search container */
-
 .faqflow__search {
   display: block;
   width: 100%;
@@ -108,7 +99,6 @@
 }
 
 /* FAQFlow search label */
-
 .faqflow__search-label {
   display: block;
   width: 100%;
@@ -122,7 +112,6 @@
 }
 
 /* FAQFlow search input */
-
 .faqflow__search-input {
   display: block;
   width: 100%;
@@ -142,14 +131,12 @@
 }
 
 /* FAQFlow search focus */
-
 .faqflow__search-input:focus {
   outline: none;
   outline-offset: 2px;
 }
 
 /* FAQFlow search browser controls */
-
 .faqflow__search-input::-webkit-search-decoration,
 .faqflow__search-input::-webkit-search-cancel-button,
 .faqflow__search-input::-webkit-search-results-button,
@@ -158,7 +145,6 @@
 }
 
 /* FAQFlow groups container */
-
 .faqflow__groups {
   display: flex;
   width: 100%;
@@ -174,7 +160,6 @@
 }
 
 /* FAQFlow group button */
-
 .faqflow__group {
   display: inline-flex;
   flex: 0 0 auto;
@@ -205,7 +190,6 @@
 }
 
 /* FAQFlow group hover */
-
 .faqflow__group:hover {
   background: color-mix(
     in srgb,
@@ -216,7 +200,6 @@
 }
 
 /* FAQFlow group active */
-
 .faqflow__group.is-active {
   background: var(--faqflow-accent-color, #111111);
   color: #ffffff;
@@ -224,14 +207,12 @@
 }
 
 /* FAQFlow group focus */
-
 .faqflow__group:focus-visible {
   outline: 2px solid var(--faqflow-accent-color, #111111);
   outline-offset: 3px;
 }
 
 /* FAQFlow category container */
-
 .faqflow__categories {
   display: flex;
   width: 100%;
@@ -247,7 +228,6 @@
 }
 
 /* FAQFlow category button */
-
 .faqflow__category {
   display: inline-flex;
   flex: 0 0 auto;
@@ -278,13 +258,11 @@
 }
 
 /* FAQFlow category hover */
-
 .faqflow__category:hover {
   border-color: var(--faqflow-accent-color, #111111);
 }
 
 /* FAQFlow category active */
-
 .faqflow__category.is-active {
   background: var(--faqflow-accent-color, #111111);
   color: #ffffff;
@@ -292,7 +270,6 @@
 }
 
 /* FAQFlow pill categories */
-
 .faqflow[data-category-style="pills"] .faqflow__categories {
   flex-wrap: wrap;
   gap: 8px;
@@ -305,13 +282,11 @@
 }
 
 /* FAQFlow active pill */
-
 .faqflow[data-category-style="pills"] .faqflow__category.is-active {
   border-radius: 999px;
 }
 
 /* FAQFlow button categories */
-
 .faqflow[data-category-style="buttons"] .faqflow__categories {
   flex-wrap: wrap;
   gap: 8px;
@@ -324,13 +299,11 @@
 }
 
 /* FAQFlow active button */
-
 .faqflow[data-category-style="buttons"] .faqflow__category.is-active {
   border-radius: var(--faqflow-border-radius, 6px);
 }
 
 /* FAQFlow tab categories */
-
 .faqflow[data-category-style="tabs"] .faqflow__categories {
   flex-wrap: nowrap;
   justify-content: flex-start;
@@ -345,7 +318,6 @@
 }
 
 /* FAQFlow tab category button */
-
 .faqflow[data-category-style="tabs"] .faqflow__category {
   flex: 0 0 auto;
   width: auto;
@@ -362,7 +334,6 @@
 }
 
 /* FAQFlow tab hover */
-
 .faqflow[data-category-style="tabs"] .faqflow__category:hover {
   background: transparent;
   color: var(--faqflow-accent-color, #111111);
@@ -371,7 +342,6 @@
 }
 
 /* FAQFlow active tab */
-
 .faqflow[data-category-style="tabs"] .faqflow__category.is-active {
   background: transparent;
   color: var(--faqflow-accent-color, #111111);
@@ -381,7 +351,6 @@
 }
 
 /* FAQFlow category and group accessibility focus */
-
 .faqflow__category:focus-visible,
 .faqflow__group:focus-visible,
 .faqflow__search-input:focus-visible,
@@ -391,7 +360,6 @@
 }
 
 /* FAQFlow loading and empty state */
-
 .faqflow__status {
   display: block;
   width: 100%;
@@ -405,7 +373,6 @@
 }
 
 /* FAQFlow FAQ list */
-
 .faqflow__list {
   display: block;
   width: 100%;
@@ -417,7 +384,6 @@
 }
 
 /* FAQFlow FAQ item */
-
 .faqflow__item {
   display: block;
   width: 100%;
@@ -433,13 +399,11 @@
 }
 
 /* FAQFlow last FAQ item */
-
 .faqflow__item:last-child {
   border-bottom: var(--faqflow-border-width, 1px) solid rgba(0, 0, 0, 0.12);
 }
 
 /* FAQFlow question */
-
 .faqflow__question {
   position: relative;
   display: flex;
@@ -460,7 +424,6 @@
 }
 
 /* FAQFlow remove native details marker */
-
 .faqflow__question::-webkit-details-marker {
   display: none;
 }
@@ -471,7 +434,6 @@
 }
 
 /* FAQFlow question icon */
-
 .faqflow__question::after {
   content: "+";
   position: absolute;
@@ -491,20 +453,17 @@
 }
 
 /* FAQFlow open question icon */
-
 .faqflow__item[open] .faqflow__question::after {
   content: "−";
 }
 
 /* FAQFlow question focus */
-
 .faqflow__question:focus-visible {
   outline: 2px solid var(--faqflow-accent-color, #111111);
   outline-offset: 4px;
 }
 
 /* FAQFlow answer */
-
 .faqflow__answer {
   display: block;
   width: 100%;
@@ -519,7 +478,6 @@
 }
 
 /* FAQFlow rich content overflow protection */
-
 .faqflow__answer \\\* {
   max-width: 100%;
   min-width: 0;
@@ -555,7 +513,6 @@
 }
 
 /* FAQFlow layout */
-
 .faqflow[data-layout-style="two_column"] .faqflow__list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -575,7 +532,6 @@
 }
 
 /* FAQFlow cards style */
-
 .faqflow[data-accordion-style="cards"] .faqflow__item {
   margin: 0 0 12px;
   border: var(--faqflow-border-width, 1px) solid rgba(0, 0, 0, 0.12);
@@ -597,7 +553,6 @@
 }
 
 /* FAQFlow minimal style */
-
 .faqflow[data-accordion-style="minimal"] .faqflow__item {
   border-top: 0;
   border-right: 0;
@@ -620,7 +575,6 @@
 }
 
 /* FAQFlow cards in two-column layout */
-
 .faqflow[data-layout-style="two_column"][data-accordion-style="cards"]
   .faqflow__item {
   margin: 0;
@@ -632,7 +586,6 @@
 }
 
 /* FAQFlow minimal two-column layout */
-
 .faqflow[data-layout-style="two_column"][data-accordion-style="minimal"]
   .faqflow__list {
   gap: 0 16px;
@@ -653,7 +606,6 @@
 }
 
 /* FAQFlow theme compatibility */
-
 .faqflow button,
 .faqflow input,
 .faqflow summary {
@@ -762,7 +714,6 @@
 }
 
 /* FAQFlow pagination */
-
 .faqflow__pagination {
   display: flex;
   width: 100%;
