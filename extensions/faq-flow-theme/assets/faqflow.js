@@ -14,26 +14,43 @@
 
   const allowedTags = new Set([
     "P",
+
     "BR",
+
     "STRONG",
+
     "B",
+
     "EM",
+
     "I",
+
     "U",
+
     "UL",
+
     "OL",
+
     "LI",
+
     "A",
   ]);
 
   const dangerousTags = new Set([
     "SCRIPT",
+
     "STYLE",
+
     "IFRAME",
+
     "OBJECT",
+
     "EMBED",
+
     "FORM",
+
     "META",
+
     "LINK",
   ]);
 
@@ -43,6 +60,189 @@
       : new Map();
 
   window.__faqflowRequestCache = requestCache;
+
+  const analyticsEventTypes = new Set([
+    "faq_expand",
+    "faq_search",
+    "faq_category_filter",
+    "faq_group_filter",
+    "faq_pagination",
+  ]);
+
+  const analyticsQueue =
+    window.__faqflowAnalyticsQueue instanceof Array
+      ? window.__faqflowAnalyticsQueue
+      : [];
+
+  window.__faqflowAnalyticsQueue = analyticsQueue;
+
+  let analyticsAllowed = false;
+  let analyticsPrivacyReady = false;
+  let analyticsFlushTimer = null;
+  let analyticsPrivacyRetryTimer = null;
+
+  function clearAnalyticsQueue() {
+    analyticsQueue.length = 0;
+  }
+
+  function getAnalyticsAllowedState() {
+    const customerPrivacy = window.Shopify?.customerPrivacy;
+
+    if (!customerPrivacy?.analyticsProcessingAllowed) {
+      return null;
+    }
+
+    try {
+      return customerPrivacy.analyticsProcessingAllowed() === true;
+    } catch (error) {
+      console.warn("FAQFlow analytics privacy check failed:", error);
+      return null;
+    }
+  }
+
+  function scheduleFaqAnalyticsFlush() {
+    if (analyticsFlushTimer || !analyticsAllowed || !analyticsQueue.length) {
+      return;
+    }
+
+    analyticsFlushTimer = window.setTimeout(() => {
+      analyticsFlushTimer = null;
+      flushFaqAnalytics();
+    }, 500);
+  }
+
+  function flushFaqAnalytics() {
+    if (!analyticsAllowed || !analyticsQueue.length) {
+      return;
+    }
+
+    const events = analyticsQueue.splice(0, 20);
+    const body = JSON.stringify({ events });
+    const endpoint = "/apps/faqflow";
+
+    if (navigator.sendBeacon) {
+      const payload = new Blob([body], { type: "application/json" });
+
+      if (navigator.sendBeacon(endpoint, payload)) {
+        if (analyticsQueue.length) {
+          scheduleFaqAnalyticsFlush();
+        }
+
+        return;
+      }
+    }
+
+    void fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body,
+      keepalive: true,
+    }).catch((error) => {
+      console.warn("FAQFlow analytics request failed:", error);
+    });
+
+    if (analyticsQueue.length) {
+      scheduleFaqAnalyticsFlush();
+    }
+  }
+
+  function setAnalyticsPermission(allowed) {
+    analyticsAllowed = allowed === true;
+    analyticsPrivacyReady = true;
+
+    if (!analyticsAllowed) {
+      clearAnalyticsQueue();
+      return;
+    }
+
+    flushFaqAnalytics();
+  }
+
+  function initializeFaqAnalyticsPrivacy() {
+    if (analyticsPrivacyReady) {
+      return;
+    }
+
+    const allowed = getAnalyticsAllowedState();
+
+    if (typeof allowed === "boolean") {
+      setAnalyticsPermission(allowed);
+      return;
+    }
+
+    if (analyticsPrivacyRetryTimer) {
+      return;
+    }
+
+    analyticsPrivacyRetryTimer = window.setTimeout(() => {
+      analyticsPrivacyRetryTimer = null;
+      initializeFaqAnalyticsPrivacy();
+    }, 250);
+  }
+
+  function handleAnalyticsConsentChange() {
+    const allowed = getAnalyticsAllowedState();
+
+    if (typeof allowed === "boolean") {
+      setAnalyticsPermission(allowed);
+      return;
+    }
+
+    analyticsAllowed = false;
+    analyticsPrivacyReady = true;
+    clearAnalyticsQueue();
+  }
+
+  function getAnalyticsContext(block) {
+    return {
+      productGid: block.dataset.productId
+        ? `gid://shopify/Product/${block.dataset.productId}`
+        : null,
+      collectionGid: block.dataset.collectionId
+        ? `gid://shopify/Collection/${block.dataset.collectionId}`
+        : null,
+    };
+  }
+
+  function queueFaqAnalytics(block, eventType, details = {}) {
+    if (!analyticsPrivacyReady) {
+      initializeFaqAnalyticsPrivacy();
+      return;
+    }
+
+    if (!analyticsAllowed || !analyticsEventTypes.has(eventType)) {
+      return;
+    }
+
+    const context = getAnalyticsContext(block);
+
+    analyticsQueue.push({
+      eventType,
+      faqId: details.faqId || null,
+      categoryId: details.categoryId || null,
+      groupId: details.groupId || null,
+      productGid: context.productGid,
+      collectionGid: context.collectionGid,
+      occurredAt: new Date().toISOString(),
+    });
+
+    if (analyticsQueue.length >= 10) {
+      flushFaqAnalytics();
+      return;
+    }
+
+    scheduleFaqAnalyticsFlush();
+  }
+
+  document.addEventListener(
+    "visitorConsentCollected",
+    handleAnalyticsConsentChange,
+  );
+
+  initializeFaqAnalyticsPrivacy();
 
   function isSafeUrl(url) {
     if (!url) {
@@ -71,6 +271,7 @@
 
         if (child.nodeType !== Node.ELEMENT_NODE) {
           child.remove();
+
           return;
         }
 
@@ -78,12 +279,15 @@
 
         if (dangerousTags.has(tagName)) {
           child.remove();
+
           return;
         }
 
         if (!allowedTags.has(tagName)) {
           sanitizeNode(child);
+
           child.replaceWith(...Array.from(child.childNodes));
+
           return;
         }
 
@@ -110,10 +314,13 @@
 
           if (!href || !isSafeUrl(href)) {
             child.removeAttribute("href");
+
             child.removeAttribute("target");
+
             child.removeAttribute("rel");
           } else {
             child.setAttribute("target", "_blank");
+
             child.setAttribute("rel", "noopener noreferrer");
           }
         }
@@ -145,11 +352,15 @@
 
     registry.set(
       block,
+
       Array.isArray(faqs)
         ? faqs.map((faq) => ({
             id: faq.id,
+
             question: faq.question,
+
             answer: faq.answer,
+
             _answerText: faq._answerText,
           }))
         : [],
@@ -174,6 +385,7 @@
     });
 
     const mainEntity = Array.from(faqMap.values())
+
       .map((faq) => {
         const question = String(faq.question || "").trim();
 
@@ -187,13 +399,17 @@
 
         return {
           "@type": "Question",
+
           name: question,
+
           acceptedAnswer: {
             "@type": "Answer",
+
             text: answer,
           },
         };
       })
+
       .filter(Boolean);
 
     const existingScript = document.querySelector(
@@ -202,20 +418,26 @@
 
     if (!mainEntity.length) {
       existingScript?.remove();
+
       return;
     }
 
     const jsonLd = {
-      "@context": "https://schema.org",
+      "@context": "https\://schema.org",
+
       "@type": "FAQPage",
+
       url: window.location.href.split("#")[0],
+
       mainEntity,
     };
 
     const script = existingScript || document.createElement("script");
 
     script.type = "application/ld+json";
+
     script.dataset.faqflowJsonld = "true";
+
     script.textContent = JSON.stringify(jsonLd);
 
     if (!existingScript) {
@@ -225,6 +447,7 @@
 
   function getRequestCacheKey(productId, collectionId) {
     const productKey = productId || "";
+
     const collectionKey = collectionId || "";
 
     return `${productKey}::${collectionKey}`;
@@ -237,6 +460,7 @@
 
     const requestPromise = fetch(endpoint, {
       method: "GET",
+
       headers: {
         Accept: "application/json",
       },
@@ -248,6 +472,7 @@
 
         return response.json();
       })
+
       .then((data) => {
         if (!data.success) {
           throw new Error(data.error || "Unable to load FAQs.");
@@ -255,8 +480,10 @@
 
         return data;
       })
+
       .catch((error) => {
         requestCache.delete(endpoint);
+
         throw error;
       });
 
@@ -314,6 +541,7 @@
 
     const configuredPaginationSize = Number.parseInt(
       block.dataset.paginationSize || "6",
+
       10,
     );
 
@@ -340,22 +568,29 @@
       }
 
       statusElement.textContent = message;
+
       statusElement.hidden = hidden;
     }
 
     function normalizeSearchText(value) {
       return String(value || "")
         .replace(/\s+/g, " ")
+
         .trim()
+
         .toLowerCase();
     }
 
     function escapeHtml(value) {
       return String(value || "")
         .replace(/&/g, "&amp;")
+
         .replace(/</g, "&lt;")
+
         .replace(/>/g, "&gt;")
+
         .replace(/"/g, "&quot;")
+
         .replace(/'/g, "&#039;");
     }
 
@@ -366,7 +601,10 @@
         return escapeHtml(text);
       }
 
-      const normalizedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const normalizedTerm = searchTerm.replace(
+        /[.*+?^${}()|[\\]\\\\]/g,
+        "\\\\$&",
+      );
 
       if (!normalizedTerm) {
         return escapeHtml(text);
@@ -376,6 +614,7 @@
 
       return escapeHtml(text).replace(
         expression,
+
         '<mark class="faqflow__search-highlight">$1</mark>',
       );
     }
@@ -563,6 +802,7 @@
           currentSearchTerm
             ? `No FAQs found for "${currentSearchTerm}".`
             : emptyMessage,
+
           false,
         );
 
@@ -620,6 +860,16 @@
 
         item.append(question, answer);
 
+        item.addEventListener("toggle", () => {
+          if (!item.open) {
+            return;
+          }
+
+          queueFaqAnalytics(block, "faq_expand", {
+            faqId: faq.id,
+          });
+        });
+
         if (!allowMultipleOpen) {
           item.addEventListener("toggle", () => {
             if (!item.open) {
@@ -627,7 +877,9 @@
             }
 
             listElement
+
               .querySelectorAll(".faqflow__item[open]")
+
               .forEach((openItem) => {
                 if (openItem !== item) {
                   openItem.removeAttribute("open");
@@ -651,6 +903,7 @@
 
       if (!visibleCategories.length) {
         categoriesElement.hidden = true;
+
         return;
       }
 
@@ -659,8 +912,11 @@
       const allButton = document.createElement("button");
 
       allButton.type = "button";
+
       allButton.className = "faqflow__category";
+
       allButton.textContent = "All";
+
       allButton.dataset.categoryId = "";
 
       allButton.setAttribute("aria-pressed", String(!activeCategory));
@@ -671,10 +927,15 @@
 
       allButton.addEventListener("click", () => {
         activeCategory = "";
+
         resetPagination();
 
+        queueFaqAnalytics(block, "faq_category_filter");
+
         renderCategories();
+
         renderGroups();
+
         renderFaqs();
       });
 
@@ -684,12 +945,16 @@
         const button = document.createElement("button");
 
         button.type = "button";
+
         button.className = "faqflow__category";
+
         button.textContent = category.name;
+
         button.dataset.categoryId = category.id;
 
         button.setAttribute(
           "aria-pressed",
+
           String(activeCategory === category.id),
         );
 
@@ -699,10 +964,17 @@
 
         button.addEventListener("click", () => {
           activeCategory = category.id;
+
           resetPagination();
 
+          queueFaqAnalytics(block, "faq_category_filter", {
+            categoryId: category.id,
+          });
+
           renderCategories();
+
           renderGroups();
+
           renderFaqs();
         });
 
@@ -721,6 +993,7 @@
 
       if (!visibleGroups.length) {
         groupsElement.hidden = true;
+
         return;
       }
 
@@ -729,8 +1002,11 @@
       const allButton = document.createElement("button");
 
       allButton.type = "button";
+
       allButton.className = "faqflow__group";
+
       allButton.textContent = "All";
+
       allButton.dataset.groupId = "";
 
       allButton.setAttribute("aria-pressed", String(!activeGroup));
@@ -741,10 +1017,15 @@
 
       allButton.addEventListener("click", () => {
         activeGroup = "";
+
         resetPagination();
 
+        queueFaqAnalytics(block, "faq_group_filter");
+
         renderGroups();
+
         renderCategories();
+
         renderFaqs();
       });
 
@@ -754,8 +1035,11 @@
         const button = document.createElement("button");
 
         button.type = "button";
+
         button.className = "faqflow__group";
+
         button.textContent = group.name;
+
         button.dataset.groupId = group.id;
 
         button.setAttribute("aria-pressed", String(activeGroup === group.id));
@@ -766,10 +1050,17 @@
 
         button.addEventListener("click", () => {
           activeGroup = group.id;
+
           resetPagination();
 
+          queueFaqAnalytics(block, "faq_group_filter", {
+            groupId: group.id,
+          });
+
           renderGroups();
+
           renderCategories();
+
           renderFaqs();
         });
 
@@ -806,8 +1097,11 @@
     function normalizeFaqData(data) {
       const normalized = {
         ...data,
+
         faqs: Array.isArray(data?.faqs) ? data.faqs : [],
+
         categories: Array.isArray(data?.categories) ? data.categories : [],
+
         groups: Array.isArray(data?.groups) ? data.groups : [],
       };
 
@@ -822,16 +1116,19 @@
 
         const groups = Array.isArray(faq.groups)
           ? faq.groups
+
               .map((group) => {
                 if (group?.group) {
                   return {
                     ...group.group,
+
                     sortOrder: group.sortOrder ?? group.group.sortOrder ?? 0,
                   };
                 }
 
                 return group;
               })
+
               .filter(Boolean)
           : [];
 
@@ -847,10 +1144,15 @@
 
         return {
           ...faq,
+
           groups,
+
           _sanitizedAnswer: sanitizedAnswer,
+
           _answerText: answerText,
+
           _searchQuestion: normalizeSearchText(faq.question),
+
           _searchAnswer: answerText.toLowerCase(),
         };
       });
@@ -868,6 +1170,9 @@
       }
 
       currentPage -= 1;
+
+      queueFaqAnalytics(block, "faq_pagination");
+
       renderFaqs();
     }
 
@@ -885,6 +1190,9 @@
       }
 
       currentPage += 1;
+
+      queueFaqAnalytics(block, "faq_pagination");
+
       renderFaqs();
     }
 
@@ -923,7 +1231,9 @@
       validateDefaultFilters();
 
       renderCategories();
+
       renderGroups();
+
       renderFaqs();
     } catch (error) {
       console.error("FAQFlow:", error);
@@ -951,6 +1261,12 @@
       resetPagination();
 
       searchTimer = window.setTimeout(() => {
+        const searchTerm = normalizeSearchText(searchElement?.value || "");
+
+        if (searchTerm) {
+          queueFaqAnalytics(block, "faq_search");
+        }
+
         renderFaqs();
       }, 150);
     });
