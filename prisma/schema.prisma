@@ -60,8 +60,8 @@ model Faq {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  category Category?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  groups   FaqGroup[]
+  category    Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  groups      FaqGroup[]
   products    FaqProduct[]
   collections FaqCollection[]
 
@@ -100,12 +100,12 @@ model FaqGroup {
 }
 
 model FaqProduct {
-  faqId       String
-  productGid  String
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
+  faqId      String
+  productGid String
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
 
-  faq         Faq      @relation(fields: [faqId], references: [id], onDelete: Cascade)
+  faq Faq @relation(fields: [faqId], references: [id], onDelete: Cascade)
 
   @@id([faqId, productGid])
   @@index([productGid])
@@ -118,9 +118,27 @@ model FaqCollection {
   sortOrder     Int      @default(0)
   createdAt     DateTime @default(now())
 
-  faq           Faq      @relation(fields: [faqId], references: [id], onDelete: Cascade)
+  faq Faq @relation(fields: [faqId], references: [id], onDelete: Cascade)
 
   @@id([faqId, collectionGid])
   @@index([collectionGid])
   @@index([faqId, sortOrder])
+}
+
+model FaqAnalyticsEvent {
+  id            String   @id @default(cuid())
+  shop          String
+  eventType     String
+  faqId         String?
+  categoryId    String?
+  groupId       String?
+  productGid    String?
+  collectionGid String?
+  occurredAt    DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([shop, eventType, occurredAt])
+  @@index([shop, faqId, occurredAt])
+  @@index([shop, categoryId, occurredAt])
+  @@index([shop, groupId, occurredAt])
 }
