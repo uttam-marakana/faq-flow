@@ -125,31 +125,40 @@
     return faqHtmlToText(html).toLowerCase();
   }
 
-  function updateFaqJsonLd(faqs) {
-    const existingScript = document.querySelector(
-      'script[data-faqflow-jsonld="true"]',
+  function updateFaqJsonLd(block, faqs) {
+    const registry =
+      window.__faqflowJsonLdBlocks instanceof Map
+        ? window.__faqflowJsonLdBlocks
+        : new Map();
+
+    window.__faqflowJsonLdBlocks = registry;
+
+    registry.set(
+      block,
+      Array.isArray(faqs)
+        ? faqs.map((faq) => ({
+            id: faq.id,
+            question: faq.question,
+            answer: faq.answer,
+          }))
+        : [],
     );
 
-    const existingFaqs = Array.isArray(window.__faqflowJsonLdFaqs)
-      ? window.__faqflowJsonLdFaqs
-      : [];
+    const faqMap = new Map();
 
-    const faqMap = new Map(existingFaqs.map((faq) => [faq.id, faq]));
+    registry.forEach((blockFaqs) => {
+      blockFaqs.forEach((faq) => {
+        if (!faq?.id) {
+          return;
+        }
 
-    faqs.forEach((faq) => {
-      faqMap.set(faq.id, {
-        id: faq.id,
-        question: faq.question,
-        answer: faq.answer,
+        faqMap.set(faq.id, faq);
       });
     });
 
-    window.__faqflowJsonLdFaqs = Array.from(faqMap.values());
-
-    const mainEntity = window.__faqflowJsonLdFaqs
+    const mainEntity = Array.from(faqMap.values())
       .map((faq) => {
-        const question = faq.question?.trim() || "";
-
+        const question = String(faq.question || "").trim();
         const answer = faqHtmlToText(faq.answer);
 
         if (!question || !answer) {
@@ -167,6 +176,10 @@
       })
       .filter(Boolean);
 
+    const existingScript = document.querySelector(
+      'script[data-faqflow-jsonld="true"]',
+    );
+
     if (!mainEntity.length) {
       existingScript?.remove();
       return;
@@ -175,6 +188,7 @@
     const jsonLd = {
       "@context": "https://schema.org",
       "@type": "FAQPage",
+      url: window.location.href.split("#")[0],
       mainEntity,
     };
 
@@ -503,6 +517,10 @@
         : totalItems;
 
       const visibleFaqs = orderedFaqs.slice(startIndex, endIndex);
+
+      if (block.dataset.enableJsonLd === "true") {
+        updateFaqJsonLd(block, visibleFaqs);
+      }
 
       renderPagination(totalItems);
 
