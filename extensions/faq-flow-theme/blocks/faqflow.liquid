@@ -1,5 +1,5 @@
 <div
-  class="faqflow"
+  class="faqflow faqflow--{{ block.settings.content_width }}"
   data-faqflow
   data-api-url="/apps/faqflow"
   data-show-search="{{ block.settings.show_search }}"
@@ -15,7 +15,6 @@
   data-product-id="{% if product %}{{ product.id }}{% endif %}"
   data-collection-id="{% if collection %}{{ collection.id }}{% endif %}"
   style="
-    --faqflow-max-width: {{ block.settings.content_width }}px;
     --faqflow-heading-align: {{ block.settings.heading_alignment }};
     --faqflow-accent-color: {{ block.settings.accent_color }};
     --faqflow-question-color: {{ block.settings.question_color }};
@@ -307,27 +306,15 @@
       "type": "select",
       "id": "content_width",
       "label": "Content width",
-      "default": "1200",
+      "default": "page-width",
       "options": [
         {
-          "value": "640",
-          "label": "640px"
+          "value": "page-width",
+          "label": "Page width"
         },
         {
-          "value": "800",
-          "label": "800px"
-        },
-        {
-          "value": "1000",
-          "label": "1000px"
-        },
-        {
-          "value": "1200",
-          "label": "1200px"
-        },
-        {
-          "value": "1400",
-          "label": "1400px"
+          "value": "full-width",
+          "label": "Full width"
         }
       ]
     },
