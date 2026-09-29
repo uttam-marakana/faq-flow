@@ -5,6 +5,13 @@
     return;
   }
 
+  const initializedBlocks =
+    window.__faqflowInitializedBlocks instanceof WeakSet
+      ? window.__faqflowInitializedBlocks
+      : new WeakSet();
+
+  window.__faqflowInitializedBlocks = initializedBlocks;
+
   const allowedTags = new Set([
     "P",
     "BR",
@@ -29,6 +36,13 @@
     "META",
     "LINK",
   ]);
+
+  const requestCache =
+    window.__faqflowRequestCache instanceof Map
+      ? window.__faqflowRequestCache
+      : new Map();
+
+  window.__faqflowRequestCache = requestCache;
 
   function isSafeUrl(url) {
     if (!url) {
@@ -113,16 +127,12 @@
     return template.innerHTML;
   }
 
-  function faqHtmlToText(html) {
+  function htmlToTextFromSanitizedHtml(html) {
     const template = document.createElement("template");
 
-    template.innerHTML = sanitizeFaqHtml(html);
+    template.innerHTML = html || "";
 
     return template.content.textContent.replace(/\s+/g, " ").trim();
-  }
-
-  function faqHtmlToSearchText(html) {
-    return faqHtmlToText(html).toLowerCase();
   }
 
   function updateFaqJsonLd(block, faqs) {
@@ -140,9 +150,16 @@
             id: faq.id,
             question: faq.question,
             answer: faq.answer,
+            _answerText: faq._answerText,
           }))
         : [],
     );
+
+    Array.from(registry.keys()).forEach((registeredBlock) => {
+      if (!document.documentElement.contains(registeredBlock)) {
+        registry.delete(registeredBlock);
+      }
+    });
 
     const faqMap = new Map();
 
@@ -159,7 +176,10 @@
     const mainEntity = Array.from(faqMap.values())
       .map((faq) => {
         const question = String(faq.question || "").trim();
-        const answer = faqHtmlToText(faq.answer);
+
+        const answer =
+          String(faq._answerText || "").trim() ||
+          htmlToTextFromSanitizedHtml(sanitizeFaqHtml(faq.answer));
 
         if (!question || !answer) {
           return null;
@@ -203,7 +223,55 @@
     }
   }
 
+  function getRequestCacheKey(productId, collectionId) {
+    const productKey = productId || "";
+    const collectionKey = collectionId || "";
+
+    return `${productKey}::${collectionKey}`;
+  }
+
+  function getFaqRequest(endpoint) {
+    if (requestCache.has(endpoint)) {
+      return requestCache.get(endpoint);
+    }
+
+    const requestPromise = fetch(endpoint, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`FAQ request failed with status ${response.status}`);
+        }
+
+        return response.json();
+      })
+      .then((data) => {
+        if (!data.success) {
+          throw new Error(data.error || "Unable to load FAQs.");
+        }
+
+        return data;
+      })
+      .catch((error) => {
+        requestCache.delete(endpoint);
+        throw error;
+      });
+
+    requestCache.set(endpoint, requestPromise);
+
+    return requestPromise;
+  }
+
   async function loadFaqs(block) {
+    if (initializedBlocks.has(block)) {
+      return;
+    }
+
+    initializedBlocks.add(block);
+
     const statusElement = block.querySelector("[data-faqflow-status]");
 
     const listElement = block.querySelector("[data-faqflow-list]");
@@ -375,13 +443,11 @@
     }
 
     function hasFaqsForCategory(categoryId) {
-      return faqData.faqs.some((faq) => faq.category?.id === categoryId);
+      return faqData.categoryIdsWithFaqs.has(categoryId);
     }
 
     function hasFaqsForGroup(groupId) {
-      return faqData.faqs.some((faq) =>
-        faq.groups?.some((group) => group.id === groupId),
-      );
+      return faqData.groupIdsWithFaqs.has(groupId);
     }
 
     function getVisibleCategories() {
@@ -404,10 +470,9 @@
         const matchesGroup =
           !activeGroup || faq.groups?.some((group) => group.id === activeGroup);
 
-        const questionText =
-          faq._searchQuestion || normalizeSearchText(faq.question);
+        const questionText = faq._searchQuestion;
 
-        const answerText = faq._searchAnswer || faqHtmlToSearchText(faq.answer);
+        const answerText = faq._searchAnswer;
 
         const matchesSearch =
           !searchTerm ||
@@ -501,6 +566,10 @@
           false,
         );
 
+        if (block.dataset.enableJsonLd === "true") {
+          updateFaqJsonLd(block, []);
+        }
+
         return;
       }
 
@@ -518,11 +587,11 @@
 
       const visibleFaqs = orderedFaqs.slice(startIndex, endIndex);
 
+      renderPagination(totalItems);
+
       if (block.dataset.enableJsonLd === "true") {
         updateFaqJsonLd(block, visibleFaqs);
       }
-
-      renderPagination(totalItems);
 
       visibleFaqs.forEach((faq) => {
         const item = document.createElement("details");
@@ -547,7 +616,7 @@
 
         answer.className = "faqflow__answer";
 
-        answer.innerHTML = sanitizeFaqHtml(faq.answer);
+        answer.innerHTML = faq._sanitizedAnswer;
 
         item.append(question, answer);
 
@@ -630,7 +699,6 @@
 
         button.addEventListener("click", () => {
           activeCategory = category.id;
-
           resetPagination();
 
           renderCategories();
@@ -698,7 +766,6 @@
 
         button.addEventListener("click", () => {
           activeGroup = group.id;
-
           resetPagination();
 
           renderGroups();
@@ -744,9 +811,16 @@
         groups: Array.isArray(data?.groups) ? data.groups : [],
       };
 
-      normalized.faqs = normalized.faqs.map((faq) => ({
-        ...faq,
-        groups: Array.isArray(faq.groups)
+      const categoryIdsWithFaqs = new Set();
+
+      const groupIdsWithFaqs = new Set();
+
+      normalized.faqs = normalized.faqs.map((faq) => {
+        const sanitizedAnswer = sanitizeFaqHtml(faq.answer);
+
+        const answerText = htmlToTextFromSanitizedHtml(sanitizedAnswer);
+
+        const groups = Array.isArray(faq.groups)
           ? faq.groups
               .map((group) => {
                 if (group?.group) {
@@ -759,10 +833,31 @@
                 return group;
               })
               .filter(Boolean)
-          : [],
-        _searchQuestion: normalizeSearchText(faq.question),
-        _searchAnswer: faqHtmlToSearchText(faq.answer),
-      }));
+          : [];
+
+        if (faq.category?.id) {
+          categoryIdsWithFaqs.add(faq.category.id);
+        }
+
+        groups.forEach((group) => {
+          if (group?.id) {
+            groupIdsWithFaqs.add(group.id);
+          }
+        });
+
+        return {
+          ...faq,
+          groups,
+          _sanitizedAnswer: sanitizedAnswer,
+          _answerText: answerText,
+          _searchQuestion: normalizeSearchText(faq.question),
+          _searchAnswer: answerText.toLowerCase(),
+        };
+      });
+
+      normalized.categoryIdsWithFaqs = categoryIdsWithFaqs;
+
+      normalized.groupIdsWithFaqs = groupIdsWithFaqs;
 
       return normalized;
     }
@@ -816,28 +911,14 @@
         ? `/apps/faqflow?${queryString}`
         : "/apps/faqflow";
 
-      const response = await fetch(endpoint, {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-        },
-      });
+      const requestCacheKey = getRequestCacheKey(productId, collectionId);
 
-      if (!response.ok) {
-        throw new Error(`FAQ request failed with status ${response.status}`);
-      }
+      const cachedEndpoint =
+        requestCacheKey === "::" ? endpoint : `${endpoint}::${requestCacheKey}`;
 
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error || "Unable to load FAQs.");
-      }
+      const data = await getFaqRequest(cachedEndpoint);
 
       faqData = normalizeFaqData(data);
-
-      if (block.dataset.enableJsonLd === "true") {
-        updateFaqJsonLd(faqData.faqs);
-      }
 
       validateDefaultFilters();
 
@@ -853,6 +934,10 @@
 
       if (paginationElement) {
         paginationElement.hidden = true;
+      }
+
+      if (block.dataset.enableJsonLd === "true") {
+        updateFaqJsonLd(block, []);
       }
 
       setStatus("Unable to load FAQs right now.", false);
@@ -876,7 +961,9 @@
       }
 
       searchElement.value = "";
+
       resetPagination();
+
       searchElement.focus();
 
       renderFaqs();
@@ -885,6 +972,7 @@
     searchElement?.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && searchElement.value) {
         searchElement.value = "";
+
         resetPagination();
 
         renderFaqs();
