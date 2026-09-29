@@ -423,7 +423,7 @@
     }
 
     const jsonLd = {
-      "@context": "https\://schema.org",
+      "@context": "https://schema.org",
 
       "@type": "FAQPage",
 
