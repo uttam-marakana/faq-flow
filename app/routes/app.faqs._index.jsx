@@ -6,11 +6,142 @@ import {
   useNavigation,
   useSubmit,
 } from "react-router";
-
+import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
 const PAGE_SIZE = 6;
+const MAX_BULK_TARGETS = 50;
+
+function normalizeShopifyGid(value, resourceType) {
+  const normalized = String(value || "").trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  const gidPattern = new RegExp(`^gid://shopify/${resourceType}/\\d+$`);
+
+  if (gidPattern.test(normalized)) {
+    return normalized;
+  }
+
+  if (/^\d+$/.test(normalized)) {
+    return `gid://shopify/${resourceType}/${normalized}`;
+  }
+
+  return null;
+}
+
+function getFaqIds(formData) {
+  return [
+    ...new Set(
+      formData
+        .getAll("faqIds")
+        .map((value) => value?.toString().trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+async function getOwnedFaqIds(shop, faqIds) {
+  const existingFaqs = await prisma.faq.findMany({
+    where: {
+      id: {
+        in: faqIds,
+      },
+      shop,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  const existingIds = existingFaqs.map((faq) => faq.id);
+
+  if (existingIds.length !== faqIds.length) {
+    return null;
+  }
+
+  return existingIds;
+}
+
+async function duplicateFaq(shop, faqId) {
+  const existingFaq = await prisma.faq.findFirst({
+    where: {
+      id: faqId,
+      shop,
+    },
+    include: {
+      groups: {
+        select: {
+          groupId: true,
+          sortOrder: true,
+        },
+      },
+      products: {
+        select: {
+          productGid: true,
+          sortOrder: true,
+        },
+      },
+      collections: {
+        select: {
+          collectionGid: true,
+          sortOrder: true,
+        },
+      },
+    },
+  });
+
+  if (!existingFaq) {
+    return null;
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const duplicate = await tx.faq.create({
+      data: {
+        shop,
+        question: `${existingFaq.question} (Copy)`,
+        answer: existingFaq.answer,
+        categoryId: existingFaq.categoryId,
+        status: "draft",
+      },
+    });
+
+    if (existingFaq.groups.length > 0) {
+      await tx.faqGroup.createMany({
+        data: existingFaq.groups.map((group) => ({
+          faqId: duplicate.id,
+          groupId: group.groupId,
+          sortOrder: group.sortOrder,
+        })),
+      });
+    }
+
+    if (existingFaq.products.length > 0) {
+      await tx.faqProduct.createMany({
+        data: existingFaq.products.map((product) => ({
+          faqId: duplicate.id,
+          productGid: product.productGid,
+          sortOrder: product.sortOrder,
+        })),
+      });
+    }
+
+    if (existingFaq.collections.length > 0) {
+      await tx.faqCollection.createMany({
+        data: existingFaq.collections.map((collection) => ({
+          faqId: duplicate.id,
+          collectionGid: collection.collectionGid,
+          sortOrder: collection.sortOrder,
+        })),
+      });
+    }
+
+    return duplicate;
+  });
+}
 
 export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
@@ -18,13 +149,10 @@ export async function loader({ request }) {
   const url = new URL(request.url);
 
   const search = url.searchParams.get("search")?.trim() || "";
-
   const statusParam = url.searchParams.get("status") || "all";
-
   const categoryParam = url.searchParams.get("category") || "all";
 
   const status = statusParam === "all" ? "" : statusParam;
-
   const categoryId = categoryParam === "all" ? "" : categoryParam;
 
   const requestedPage = Number.parseInt(
@@ -56,11 +184,10 @@ export async function loader({ request }) {
       : {}),
 
     ...(status ? { status } : {}),
-
     ...(categoryId ? { categoryId } : {}),
   };
 
-  const [totalFaqs, categories] = await Promise.all([
+  const [totalFaqs, categories, groups] = await Promise.all([
     prisma.faq.count({
       where,
     }),
@@ -73,10 +200,23 @@ export async function loader({ request }) {
         name: "asc",
       },
     }),
+
+    prisma.group.findMany({
+      where: {
+        shop: session.shop,
+      },
+      orderBy: [
+        {
+          sortOrder: "asc",
+        },
+        {
+          name: "asc",
+        },
+      ],
+    }),
   ]);
 
   const totalPages = Math.max(Math.ceil(totalFaqs / PAGE_SIZE), 1);
-
   const currentPage = Math.min(requestedPageNumber, totalPages);
 
   const faqs = await prisma.faq.findMany({
@@ -105,6 +245,7 @@ export async function loader({ request }) {
   return {
     faqs,
     categories,
+    groups,
 
     filters: {
       search,
@@ -125,7 +266,6 @@ export async function action({ request }) {
   const { session } = await authenticate.admin(request);
 
   const formData = await request.formData();
-
   const intent = formData.get("intent")?.toString() || "";
 
   if (
@@ -133,13 +273,7 @@ export async function action({ request }) {
     intent === "bulk-draft" ||
     intent === "bulk-delete"
   ) {
-    const rawFaqIds = formData.getAll("faqIds");
-
-    const faqIds = [
-      ...new Set(
-        rawFaqIds.map((value) => value?.toString().trim()).filter(Boolean),
-      ),
-    ];
+    const faqIds = getFaqIds(formData);
 
     if (!faqIds.length) {
       return {
@@ -157,28 +291,15 @@ export async function action({ request }) {
       };
     }
 
-    const existingFaqs = await prisma.faq.findMany({
-      where: {
-        id: {
-          in: faqIds,
-        },
-        shop: session.shop,
-      },
-      select: {
-        id: true,
-        status: true,
-      },
-    });
+    const existingFaqIds = await getOwnedFaqIds(session.shop, faqIds);
 
-    if (existingFaqs.length !== faqIds.length) {
+    if (!existingFaqIds) {
       return {
         success: false,
         action: "bulk",
         error: "One or more selected FAQs could not be found.",
       };
     }
-
-    const existingFaqIds = existingFaqs.map((faq) => faq.id);
 
     if (intent === "bulk-publish") {
       const result = await prisma.faq.updateMany({
@@ -242,6 +363,404 @@ export async function action({ request }) {
     };
   }
 
+  if (intent === "bulk-category") {
+    const faqIds = getFaqIds(formData);
+    const categoryId = formData.get("categoryId")?.toString().trim() || "";
+
+    if (!faqIds.length) {
+      return {
+        success: false,
+        action: "bulk-category",
+        error: "Select at least one FAQ.",
+      };
+    }
+
+    if (faqIds.length > PAGE_SIZE) {
+      return {
+        success: false,
+        action: "bulk-category",
+        error: "Too many FAQs selected.",
+      };
+    }
+
+    const existingFaqIds = await getOwnedFaqIds(session.shop, faqIds);
+
+    if (!existingFaqIds) {
+      return {
+        success: false,
+        action: "bulk-category",
+        error: "One or more selected FAQs could not be found.",
+      };
+    }
+
+    if (categoryId) {
+      const category = await prisma.category.findFirst({
+        where: {
+          id: categoryId,
+          shop: session.shop,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!category) {
+        return {
+          success: false,
+          action: "bulk-category",
+          error: "Selected category was not found.",
+        };
+      }
+    }
+
+    const result = await prisma.faq.updateMany({
+      where: {
+        id: {
+          in: existingFaqIds,
+        },
+        shop: session.shop,
+      },
+      data: {
+        categoryId: categoryId || null,
+      },
+    });
+
+    return {
+      success: true,
+      action: "bulk-category",
+      count: result.count,
+    };
+  }
+
+  if (intent === "bulk-group-add" || intent === "bulk-group-remove") {
+    const faqIds = getFaqIds(formData);
+    const groupId = formData.get("groupId")?.toString().trim() || "";
+
+    if (!faqIds.length) {
+      return {
+        success: false,
+        action: "bulk-group",
+        error: "Select at least one FAQ.",
+      };
+    }
+
+    if (!groupId) {
+      return {
+        success: false,
+        action: "bulk-group",
+        error: "Select a group.",
+      };
+    }
+
+    if (faqIds.length > PAGE_SIZE) {
+      return {
+        success: false,
+        action: "bulk-group",
+        error: "Too many FAQs selected.",
+      };
+    }
+
+    const existingFaqIds = await getOwnedFaqIds(session.shop, faqIds);
+
+    if (!existingFaqIds) {
+      return {
+        success: false,
+        action: "bulk-group",
+        error: "One or more selected FAQs could not be found.",
+      };
+    }
+
+    const group = await prisma.group.findFirst({
+      where: {
+        id: groupId,
+        shop: session.shop,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!group) {
+      return {
+        success: false,
+        action: "bulk-group",
+        error: "Selected group was not found.",
+      };
+    }
+
+    if (intent === "bulk-group-add") {
+      let count = 0;
+
+      await prisma.$transaction(async (tx) => {
+        const existingAssignments = await tx.faqGroup.findMany({
+          where: {
+            faqId: {
+              in: existingFaqIds,
+            },
+            groupId,
+          },
+          select: {
+            faqId: true,
+          },
+        });
+
+        const existingIds = new Set(
+          existingAssignments.map((item) => item.faqId),
+        );
+
+        const newAssignments = existingFaqIds
+          .filter((faqId) => !existingIds.has(faqId))
+          .map((faqId) => ({
+            faqId,
+            groupId,
+            sortOrder: 0,
+          }));
+
+        if (newAssignments.length > 0) {
+          const result = await tx.faqGroup.createMany({
+            data: newAssignments,
+          });
+
+          count = result.count;
+        }
+      });
+
+      return {
+        success: true,
+        action: "bulk-group-add",
+        count,
+      };
+    }
+
+    const result = await prisma.faqGroup.deleteMany({
+      where: {
+        faqId: {
+          in: existingFaqIds,
+        },
+        groupId,
+      },
+    });
+
+    return {
+      success: true,
+      action: "bulk-group-remove",
+      count: result.count,
+    };
+  }
+
+  if (
+    intent === "bulk-add-products" ||
+    intent === "bulk-add-collections" ||
+    intent === "bulk-clear-products" ||
+    intent === "bulk-clear-collections"
+  ) {
+    const faqIds = getFaqIds(formData);
+
+    if (!faqIds.length) {
+      return {
+        success: false,
+        action: "bulk-targeting",
+        error: "Select at least one FAQ.",
+      };
+    }
+
+    if (faqIds.length > PAGE_SIZE) {
+      return {
+        success: false,
+        action: "bulk-targeting",
+        error: "Too many FAQs selected.",
+      };
+    }
+
+    const existingFaqIds = await getOwnedFaqIds(session.shop, faqIds);
+
+    if (!existingFaqIds) {
+      return {
+        success: false,
+        action: "bulk-targeting",
+        error: "One or more selected FAQs could not be found.",
+      };
+    }
+
+    if (
+      intent === "bulk-clear-products" ||
+      intent === "bulk-clear-collections"
+    ) {
+      const result =
+        intent === "bulk-clear-products"
+          ? await prisma.faqProduct.deleteMany({
+              where: {
+                faqId: {
+                  in: existingFaqIds,
+                },
+              },
+            })
+          : await prisma.faqCollection.deleteMany({
+              where: {
+                faqId: {
+                  in: existingFaqIds,
+                },
+              },
+            });
+
+      return {
+        success: true,
+        action: intent,
+        count: result.count,
+      };
+    }
+
+    const fieldName =
+      intent === "bulk-add-products" ? "productGids" : "collectionGids";
+
+    const resourceType =
+      intent === "bulk-add-products" ? "Product" : "Collection";
+
+    const rawGids = [
+      ...new Set(
+        formData
+          .getAll(fieldName)
+          .map((value) => value?.toString().trim())
+          .filter(Boolean),
+      ),
+    ];
+
+    if (!rawGids.length) {
+      return {
+        success: false,
+        action: "bulk-targeting",
+        error: `Select at least one ${resourceType.toLowerCase()}.`,
+      };
+    }
+
+    if (rawGids.length > MAX_BULK_TARGETS) {
+      return {
+        success: false,
+        action: "bulk-targeting",
+        error: `You can add up to ${MAX_BULK_TARGETS} targets at a time.`,
+      };
+    }
+
+    const normalizedGids = rawGids.map((gid) =>
+      normalizeShopifyGid(gid, resourceType),
+    );
+
+    if (normalizedGids.some((gid) => !gid)) {
+      return {
+        success: false,
+        action: "bulk-targeting",
+        error: `One or more selected ${resourceType.toLowerCase()} IDs are invalid.`,
+      };
+    }
+
+    let addedCount = 0;
+
+    await prisma.$transaction(async (tx) => {
+      if (intent === "bulk-add-products") {
+        for (const faqId of existingFaqIds) {
+          const existingTargets = await tx.faqProduct.findMany({
+            where: {
+              faqId,
+              productGid: {
+                in: normalizedGids,
+              },
+            },
+            select: {
+              productGid: true,
+            },
+          });
+
+          const existingTargetIds = new Set(
+            existingTargets.map((target) => target.productGid),
+          );
+
+          const missingTargets = normalizedGids.filter(
+            (gid) => !existingTargetIds.has(gid),
+          );
+
+          if (missingTargets.length > 0) {
+            const result = await tx.faqProduct.createMany({
+              data: missingTargets.map((productGid) => ({
+                faqId,
+                productGid,
+                sortOrder: 0,
+              })),
+            });
+
+            addedCount += result.count;
+          }
+        }
+      } else {
+        for (const faqId of existingFaqIds) {
+          const existingTargets = await tx.faqCollection.findMany({
+            where: {
+              faqId,
+              collectionGid: {
+                in: normalizedGids,
+              },
+            },
+            select: {
+              collectionGid: true,
+            },
+          });
+
+          const existingTargetIds = new Set(
+            existingTargets.map((target) => target.collectionGid),
+          );
+
+          const missingTargets = normalizedGids.filter(
+            (gid) => !existingTargetIds.has(gid),
+          );
+
+          if (missingTargets.length > 0) {
+            const result = await tx.faqCollection.createMany({
+              data: missingTargets.map((collectionGid) => ({
+                faqId,
+                collectionGid,
+                sortOrder: 0,
+              })),
+            });
+
+            addedCount += result.count;
+          }
+        }
+      }
+    });
+
+    return {
+      success: true,
+      action: intent,
+      count: addedCount,
+    };
+  }
+
+  if (intent === "duplicate") {
+    const faqId = formData.get("faqId")?.toString() || "";
+
+    if (!faqId) {
+      return {
+        success: false,
+        error: "FAQ ID is required.",
+      };
+    }
+
+    const duplicate = await duplicateFaq(session.shop, faqId);
+
+    if (!duplicate) {
+      return {
+        success: false,
+        error: "FAQ not found.",
+      };
+    }
+
+    return {
+      success: true,
+      action: "duplicate",
+      count: 1,
+      duplicateId: duplicate.id,
+    };
+  }
+
   const faqId = formData.get("faqId")?.toString() || "";
 
   if (!faqId) {
@@ -286,7 +805,6 @@ export async function action({ request }) {
       where: {
         id: existingFaq.id,
       },
-
       data: {
         status: nextStatus,
       },
@@ -357,14 +875,17 @@ function getAnswerPreview(answer) {
 }
 
 export default function FAQs() {
-  const { faqs, categories, filters, pagination } = useLoaderData();
+  const { faqs, categories, groups, filters, pagination } = useLoaderData();
 
   const actionData = useActionData();
-
   const navigation = useNavigation();
   const submit = useSubmit();
+  const shopify = useAppBridge();
 
   const [selectedFaqIds, setSelectedFaqIds] = React.useState([]);
+  const [bulkCategoryId, setBulkCategoryId] = React.useState("");
+  const [bulkGroupId, setBulkGroupId] = React.useState("");
+  const [clientError, setClientError] = React.useState("");
 
   const isSubmitting = navigation.state === "submitting";
 
@@ -434,23 +955,7 @@ export default function FAQs() {
     setSelectedFaqIds([]);
   }
 
-  function handleBulkAction(intent) {
-    if (!selectedVisibleFaqIds.length) {
-      return;
-    }
-
-    if (intent === "bulk-delete") {
-      const confirmed = window.confirm(
-        `Are you sure you want to delete ${selectedVisibleFaqIds.length} selected ${
-          selectedVisibleFaqIds.length === 1 ? "FAQ" : "FAQs"
-        }?`,
-      );
-
-      if (!confirmed) {
-        return;
-      }
-    }
-
+  function buildBulkFormData(intent) {
     const formData = new FormData();
 
     formData.append("intent", intent);
@@ -459,7 +964,146 @@ export default function FAQs() {
       formData.append("faqIds", faqId);
     });
 
+    return formData;
+  }
+
+  function handleBulkAction(intent) {
+    if (!selectedVisibleFaqIds.length) {
+      return;
+    }
+
+    if (intent === "bulk-delete") {
+      const confirmed = window.confirm(
+        `Are you sure you want to delete ${
+          selectedVisibleFaqIds.length
+        } selected ${selectedVisibleFaqIds.length === 1 ? "FAQ" : "FAQs"}?`,
+      );
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    submit(buildBulkFormData(intent), {
+      method: "post",
+    });
+  }
+
+  function handleBulkCategory() {
+    if (!selectedVisibleFaqIds.length) {
+      return;
+    }
+
+    const formData = buildBulkFormData("bulk-category");
+
+    formData.append("categoryId", bulkCategoryId);
+
     submit(formData, {
+      method: "post",
+    });
+
+    setBulkCategoryId("");
+  }
+
+  function handleBulkGroup(intent) {
+    if (!selectedVisibleFaqIds.length || !bulkGroupId) {
+      return;
+    }
+
+    const formData = buildBulkFormData(intent);
+
+    formData.append("groupId", bulkGroupId);
+
+    submit(formData, {
+      method: "post",
+    });
+
+    setBulkGroupId("");
+  }
+
+  async function handleBulkResourcePick(resourceType) {
+    if (!selectedVisibleFaqIds.length) {
+      return;
+    }
+
+    setClientError("");
+
+    try {
+      const selected = await shopify.resourcePicker({
+        type: resourceType,
+        action: "add",
+        multiple: true,
+        filter:
+          resourceType === "product"
+            ? {
+                variants: false,
+              }
+            : undefined,
+      });
+
+      if (!selected) {
+        return;
+      }
+
+      if (selected.length > MAX_BULK_TARGETS) {
+        setClientError(
+          `You can add up to ${MAX_BULK_TARGETS} targets at a time.`,
+        );
+
+        return;
+      }
+
+      const formData = buildBulkFormData(
+        resourceType === "product"
+          ? "bulk-add-products"
+          : "bulk-add-collections",
+      );
+
+      selected.forEach((resource) => {
+        formData.append(
+          resourceType === "product" ? "productGids" : "collectionGids",
+          resource.id,
+        );
+      });
+
+      submit(formData, {
+        method: "post",
+      });
+    } catch (error) {
+      console.error("FAQFlow bulk resource picker error:", error);
+
+      setClientError(
+        `Unable to select ${
+          resourceType === "product" ? "products" : "collections"
+        }.`,
+      );
+    }
+  }
+
+  function handleClearTargets(targetType) {
+    if (!selectedVisibleFaqIds.length) {
+      return;
+    }
+
+    const label =
+      targetType === "products" ? "product targeting" : "collection targeting";
+
+    const confirmed = window.confirm(
+      `Clear ${label} from ${selectedVisibleFaqIds.length} selected ${
+        selectedVisibleFaqIds.length === 1 ? "FAQ" : "FAQs"
+      }?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const intent =
+      targetType === "products"
+        ? "bulk-clear-products"
+        : "bulk-clear-collections";
+
+    submit(buildBulkFormData(intent), {
       method: "post",
     });
   }
@@ -496,12 +1140,24 @@ export default function FAQs() {
     );
   }
 
+  function handleDuplicate(faqId) {
+    submit(
+      {
+        intent: "duplicate",
+        faqId,
+      },
+      {
+        method: "post",
+      },
+    );
+  }
+
   const hasActiveFilters =
     Boolean(filters.search) ||
     Boolean(filters.status) ||
     Boolean(filters.categoryId);
 
-  const bulkActionMessage =
+  const successMessage =
     actionData?.success && actionData?.action === "bulk-publish"
       ? `${actionData.count} ${
           actionData.count === 1 ? "FAQ was" : "FAQs were"
@@ -514,7 +1170,54 @@ export default function FAQs() {
           ? `${actionData.count} ${
               actionData.count === 1 ? "FAQ was" : "FAQs were"
             } deleted.`
-          : null;
+          : actionData?.success && actionData?.action === "bulk-category"
+            ? `${actionData.count} ${
+                actionData.count === 1 ? "FAQ was" : "FAQs were"
+              } updated with the selected category.`
+            : actionData?.success && actionData?.action === "bulk-group-add"
+              ? `${actionData.count} ${
+                  actionData.count === 1 ? "FAQ was" : "FAQs were"
+                } assigned to the group.`
+              : actionData?.success &&
+                  actionData?.action === "bulk-group-remove"
+                ? `${actionData.count} ${
+                    actionData.count === 1
+                      ? "FAQ group assignment was"
+                      : "FAQ group assignments were"
+                  } removed.`
+                : actionData?.success &&
+                    actionData?.action === "bulk-add-products"
+                  ? `${actionData.count} product ${
+                      actionData.count === 1 ? "target was" : "targets were"
+                    } added.`
+                  : actionData?.success &&
+                      actionData?.action === "bulk-add-collections"
+                    ? `${actionData.count} collection ${
+                        actionData.count === 1 ? "target was" : "targets were"
+                      } added.`
+                    : actionData?.success &&
+                        actionData?.action === "bulk-clear-products"
+                      ? `${actionData.count} product ${
+                          actionData.count === 1 ? "target was" : "targets were"
+                        } cleared.`
+                      : actionData?.success &&
+                          actionData?.action === "bulk-clear-collections"
+                        ? `${actionData.count} collection ${
+                            actionData.count === 1
+                              ? "target was"
+                              : "targets were"
+                          } cleared.`
+                        : actionData?.success &&
+                            actionData?.action === "duplicate"
+                          ? "FAQ duplicated as a draft."
+                          : actionData?.success &&
+                              actionData?.action === "toggle-status"
+                            ? `FAQ ${
+                                actionData.status === "published"
+                                  ? "published"
+                                  : "moved to draft"
+                              }.`
+                            : null;
 
   return (
     <s-page heading="FAQs">
@@ -528,8 +1231,7 @@ export default function FAQs() {
             <s-heading>FAQ Management</s-heading>
 
             <s-text tone="neutral">
-              Create, manage, publish, and organize your store&apos;s frequently
-              asked questions.
+              Create, manage, publish, duplicate, and target your store&apos;s FAQs.
             </s-text>
           </s-stack>
 
@@ -550,9 +1252,7 @@ export default function FAQs() {
                   value={filters.status || "all"}
                 >
                   <s-option value="all">All statuses</s-option>
-
                   <s-option value="published">Published</s-option>
-
                   <s-option value="draft">Draft</s-option>
                 </s-select>
 
@@ -584,6 +1284,30 @@ export default function FAQs() {
           </Form>
         </s-stack>
       </s-section>
+
+      {clientError ? (
+        <s-section>
+          <s-banner heading="Bulk targeting error" tone="critical">
+            {clientError}
+          </s-banner>
+        </s-section>
+      ) : null}
+
+      {actionData?.error ? (
+        <s-section>
+          <s-banner heading="Action could not be completed" tone="critical">
+            {actionData.error}
+          </s-banner>
+        </s-section>
+      ) : null}
+
+      {successMessage ? (
+        <s-section>
+          <s-banner heading="FAQ updated" tone="success" dismissible>
+            {successMessage}
+          </s-banner>
+        </s-section>
+      ) : null}
 
       <s-section>
         <s-stack direction="block" gap="base">
@@ -621,65 +1345,157 @@ export default function FAQs() {
               borderRadius="base"
               background="subdued"
             >
-              <s-stack
-                direction="inline"
-                justifyContent="space-between"
-                alignItems="center"
-                gap="base"
-              >
-                <s-stack direction="inline" gap="base" alignItems="center">
-                  <s-text>
-                    {selectedCount} {selectedCount === 1 ? "FAQ" : "FAQs"}{" "}
-                    selected
-                  </s-text>
+              <s-stack direction="block" gap="base">
+                <s-stack
+                  direction="inline"
+                  justifyContent="space-between"
+                  alignItems="center"
+                  gap="base"
+                >
+                  <s-stack direction="inline" gap="base" alignItems="center">
+                    <s-text>
+                      {selectedCount} {selectedCount === 1 ? "FAQ" : "FAQs"}{" "}
+                      selected
+                    </s-text>
+
+                    <s-button
+                      onClick={handleClearSelection}
+                      disabled={isSubmitting}
+                    >
+                      Clear selection
+                    </s-button>
+                  </s-stack>
+
+                  <s-stack direction="inline" gap="small">
+                    <s-button
+                      variant="primary"
+                      onClick={() => handleBulkAction("bulk-publish")}
+                      loading={
+                        submittingIntent === "bulk-publish" && isSubmitting
+                      }
+                      disabled={isSubmitting}
+                    >
+                      Publish
+                    </s-button>
+
+                    <s-button
+                      onClick={() => handleBulkAction("bulk-draft")}
+                      loading={
+                        submittingIntent === "bulk-draft" && isSubmitting
+                      }
+                      disabled={isSubmitting}
+                    >
+                      Move to draft
+                    </s-button>
+
+                    <s-button
+                      tone="critical"
+                      onClick={() => handleBulkAction("bulk-delete")}
+                      loading={
+                        submittingIntent === "bulk-delete" && isSubmitting
+                      }
+                      disabled={isSubmitting}
+                    >
+                      Delete
+                    </s-button>
+                  </s-stack>
+                </s-stack>
+
+                <s-divider />
+
+                <s-stack direction="inline" gap="base" alignItems="end">
+                  <s-select
+                    label="Category"
+                    value={bulkCategoryId}
+                    onChange={(event) =>
+                      setBulkCategoryId(event.currentTarget.value)
+                    }
+                  >
+                    <s-option value="">Uncategorized</s-option>
+
+                    {categories.map((category) => (
+                      <s-option key={category.id} value={category.id}>
+                        {category.name}
+                      </s-option>
+                    ))}
+                  </s-select>
 
                   <s-button
-                    onClick={handleClearSelection}
+                    onClick={handleBulkCategory}
                     disabled={isSubmitting}
+                    loading={
+                      submittingIntent === "bulk-category" && isSubmitting
+                    }
                   >
-                    Clear selection
+                    Set category
                   </s-button>
                 </s-stack>
 
-                <s-stack direction="inline" gap="small">
-                  <s-button
-                    variant="primary"
-                    onClick={() => handleBulkAction("bulk-publish")}
-                    loading={
-                      submittingIntent === "bulk-publish" && isSubmitting
+                <s-stack direction="inline" gap="base" alignItems="end">
+                  <s-select
+                    label="Group"
+                    value={bulkGroupId}
+                    onChange={(event) =>
+                      setBulkGroupId(event.currentTarget.value)
                     }
-                    disabled={isSubmitting}
                   >
-                    Publish
+                    <s-option value="">Select group</s-option>
+
+                    {groups.map((group) => (
+                      <s-option key={group.id} value={group.id}>
+                        {group.name}
+                      </s-option>
+                    ))}
+                  </s-select>
+
+                  <s-button
+                    onClick={() => handleBulkGroup("bulk-group-add")}
+                    disabled={isSubmitting || !bulkGroupId}
+                  >
+                    Add group
                   </s-button>
 
                   <s-button
-                    onClick={() => handleBulkAction("bulk-draft")}
-                    loading={submittingIntent === "bulk-draft" && isSubmitting}
+                    onClick={() => handleBulkGroup("bulk-group-remove")}
+                    disabled={isSubmitting || !bulkGroupId}
+                  >
+                    Remove group
+                  </s-button>
+                </s-stack>
+
+                <s-stack direction="inline" gap="small" alignItems="center">
+                  <s-text emphasis="strong">Targeting</s-text>
+
+                  <s-button
+                    onClick={() => handleBulkResourcePick("product")}
                     disabled={isSubmitting}
                   >
-                    Move to draft
+                    Add products
                   </s-button>
 
                   <s-button
-                    tone="critical"
-                    onClick={() => handleBulkAction("bulk-delete")}
-                    loading={submittingIntent === "bulk-delete" && isSubmitting}
+                    onClick={() => handleBulkResourcePick("collection")}
                     disabled={isSubmitting}
                   >
-                    Delete
+                    Add collections
+                  </s-button>
+
+                  <s-button
+                    onClick={() => handleClearTargets("products")}
+                    disabled={isSubmitting}
+                  >
+                    Clear products
+                  </s-button>
+
+                  <s-button
+                    onClick={() => handleClearTargets("collections")}
+                    disabled={isSubmitting}
+                  >
+                    Clear collections
                   </s-button>
                 </s-stack>
               </s-stack>
             </s-box>
-          ) : null}
-
-          {actionData?.error ? (
-            <s-banner tone="critical">{actionData.error}</s-banner>
-          ) : null}
-
-          {bulkActionMessage ? (
-            <s-banner tone="success">{bulkActionMessage}</s-banner>
           ) : null}
 
           {faqs.length === 0 ? (
@@ -709,9 +1525,7 @@ export default function FAQs() {
             <s-stack direction="block" gap="small">
               {faqs.map((faq) => {
                 const answerPreview = getAnswerPreview(faq.answer);
-
                 const isFaqSubmitting = submittingFaqId === faq.id;
-
                 const isSelected = selectedVisibleFaqIds.includes(faq.id);
 
                 return (
@@ -765,8 +1579,21 @@ export default function FAQs() {
                         <s-button href={`/app/faqs/${faq.id}`}>Edit</s-button>
 
                         <s-button
+                          onClick={() => handleDuplicate(faq.id)}
+                          loading={
+                            isFaqSubmitting && submittingIntent === "duplicate"
+                          }
+                          disabled={isFaqSubmitting}
+                        >
+                          Duplicate
+                        </s-button>
+
+                        <s-button
                           onClick={() => handleToggleStatus(faq.id)}
-                          loading={isFaqSubmitting}
+                          loading={
+                            isFaqSubmitting &&
+                            submittingIntent === "toggle-status"
+                          }
                           disabled={isFaqSubmitting}
                         >
                           {faq.status === "published"
@@ -777,7 +1604,9 @@ export default function FAQs() {
                         <s-button
                           tone="critical"
                           onClick={() => handleDelete(faq.id)}
-                          loading={isFaqSubmitting}
+                          loading={
+                            isFaqSubmitting && submittingIntent === "delete"
+                          }
                           disabled={isFaqSubmitting}
                         >
                           Delete
