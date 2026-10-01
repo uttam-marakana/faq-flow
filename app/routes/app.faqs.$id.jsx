@@ -6,12 +6,14 @@ import {
   useNavigation,
   useSubmit,
 } from "react-router";
+
 import { useState } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { faqHtmlToText, sanitizeFaqHtml } from "../utils/sanitizeHtml.server";
+import { SECURITY_LIMITS, normalizeIdList } from "../utils/security.server";
 import RichTextEditor from "../components/RichTextEditor";
 
 import "../styles/rich-text-editor.css";
@@ -163,14 +165,19 @@ export async function action({ request, params }) {
 
   const rawCategoryId = formData.get("categoryId")?.toString().trim();
 
-  const groupIds = [
-    ...new Set(
-      formData
-        .getAll("groupIds")
-        .map((value) => value.toString().trim())
-        .filter(Boolean),
-    ),
-  ];
+  const groupIds = normalizeIdList(
+    formData.getAll("groupIds"),
+    SECURITY_LIMITS.groupIds,
+  );
+
+  if (!groupIds) {
+    return {
+      success: false,
+      errors: {
+        groups: "Too many groups were selected.",
+      },
+    };
+  }
 
   const productGids = [
     ...new Set(
