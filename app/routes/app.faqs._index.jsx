@@ -1584,70 +1584,65 @@ export default function FAQs() {
                     background="base"
                   >
                     <s-stack direction="block" gap="base">
-                      <s-stack
-                        direction="inline"
-                        justifyContent="space-between"
-                        alignItems="start"
+                      <s-grid
+                        gridTemplateColumns="auto minmax(0, 1fr) auto"
                         gap="base"
+                        alignItems="start"
                       >
+                        <s-checkbox
+                          checked={isSelected}
+                          disabled={isSubmitting}
+                          onChange={(event) =>
+                            handleSelectFaq(faq.id, event.currentTarget.checked)
+                          }
+                        />
+
+                        <s-stack direction="block" gap="small">
+                          <s-heading>{faq.question}</s-heading>
+
+                          <s-text tone="neutral">{answerPreview}</s-text>
+                        </s-stack>
+
                         <s-stack
                           direction="inline"
-                          gap="base"
+                          gap="small"
                           alignItems="start"
                         >
-                          <s-checkbox
-                            // label={`Select ${faq.question}`}
-                            checked={isSelected}
-                            disabled={isSubmitting}
-                            onChange={(event) =>
-                              handleSelectFaq(
-                                faq.id,
-                                event.currentTarget.checked,
-                              )
-                            }
-                          />
+                          <s-badge tone={getStatusTone(faq.status)}>
+                            {getStatusLabel(faq.status)}
+                          </s-badge>
 
-                          <s-stack direction="block" gap="small">
-                            <s-heading>{faq.question}</s-heading>
+                          <s-badge>
+                            {faq.category?.name || "General FAQs"}
+                          </s-badge>
 
-                            <s-stack direction="inline" gap="small">
-                              <s-badge tone={getStatusTone(faq.status)}>
-                                {getStatusLabel(faq.status)}
-                              </s-badge>
+                          {faq.groups?.map((faqGroup) => (
+                            <s-badge key={faqGroup.groupId}>
+                              {faqGroup.group.name}
+                            </s-badge>
+                          ))}
 
-                              <s-badge>
-                                {faq.category?.name || "General FAQs"}
-                              </s-badge>
+                          {faq.products?.length > 0 ? (
+                            <s-badge>
+                              {faq.products.length}{" "}
+                              {faq.products.length === 1
+                                ? "product"
+                                : "products"}
+                            </s-badge>
+                          ) : null}
 
-                              {faq.groups?.map((faqGroup) => (
-                                <s-badge key={faqGroup.groupId}>
-                                  {faqGroup.group.name}
-                                </s-badge>
-                              ))}
-
-                              {faq.products?.length > 0 ? (
-                                <s-badge>
-                                  {faq.products.length}{" "}
-                                  {faq.products.length === 1
-                                    ? "product"
-                                    : "products"}
-                                </s-badge>
-                              ) : null}
-
-                              {faq.collections?.length > 0 ? (
-                                <s-badge>
-                                  {faq.collections.length}{" "}
-                                  {faq.collections.length === 1
-                                    ? "collection"
-                                    : "collections"}
-                                </s-badge>
-                              ) : null}
-                            </s-stack>
-                          </s-stack>
+                          {faq.collections?.length > 0 ? (
+                            <s-badge>
+                              {faq.collections.length}{" "}
+                              {faq.collections.length === 1
+                                ? "collection"
+                                : "collections"}
+                            </s-badge>
+                          ) : null}
                         </s-stack>
-                      </s-stack>
+                      </s-grid>
 
-                      <s-text tone="neutral">{answerPreview}</s-text>
+                      {/* <s-text tone="neutral">{answerPreview}</s-text> */}
 
                       <s-stack direction="inline" gap="small">
                         <s-button href={`/app/faqs/${faq.id}`}>Edit</s-button>
