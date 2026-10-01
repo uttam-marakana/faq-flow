@@ -1,12 +1,14 @@
 import React from "react";
+
 import {
-  Form,
   useActionData,
   useLoaderData,
   useNavigation,
   useSubmit,
 } from "react-router";
+
 import { useAppBridge } from "@shopify/app-bridge-react";
+
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
@@ -14,20 +16,20 @@ const PAGE_SIZE = 6;
 const MAX_BULK_TARGETS = 50;
 
 function normalizeShopifyGid(value, resourceType) {
-  const normalized = String(value || "").trim();
+  const rawValue = String(value || "").trim();
 
-  if (!normalized) {
+  if (!rawValue) {
     return null;
   }
 
   const gidPattern = new RegExp(`^gid://shopify/${resourceType}/\\d+$`);
 
-  if (gidPattern.test(normalized)) {
-    return normalized;
+  if (gidPattern.test(rawValue)) {
+    return rawValue;
   }
 
-  if (/^\d+$/.test(normalized)) {
-    return `gid://shopify/${resourceType}/${normalized}`;
+  if (/^\d+$/.test(rawValue)) {
+    return `gid://shopify/${resourceType}/${rawValue}`;
   }
 
   return null;
@@ -38,109 +40,97 @@ function getFaqIds(formData) {
     ...new Set(
       formData
         .getAll("faqIds")
-        .map((value) => value?.toString().trim())
+        .map((value) => String(value || "").trim())
         .filter(Boolean),
     ),
   ];
 }
 
 async function getOwnedFaqIds(shop, faqIds) {
-  const existingFaqs = await prisma.faq.findMany({
+  if (!faqIds.length) {
+    return [];
+  }
+
+  const faqs = await prisma.faq.findMany({
     where: {
+      shop,
       id: {
         in: faqIds,
       },
-      shop,
     },
     select: {
       id: true,
     },
   });
 
-  const existingIds = existingFaqs.map((faq) => faq.id);
-
-  if (existingIds.length !== faqIds.length) {
-    return null;
-  }
-
-  return existingIds;
+  return faqs.map((faq) => faq.id);
 }
 
-async function duplicateFaq(shop, faqId) {
-  const existingFaq = await prisma.faq.findFirst({
+async function duplicateFaq({ shop, faqId }) {
+  const faq = await prisma.faq.findFirst({
     where: {
       id: faqId,
       shop,
     },
     include: {
-      groups: {
-        select: {
-          groupId: true,
-          sortOrder: true,
-        },
-      },
-      products: {
-        select: {
-          productGid: true,
-          sortOrder: true,
-        },
-      },
-      collections: {
-        select: {
-          collectionGid: true,
-          sortOrder: true,
-        },
-      },
+      groups: true,
+      products: true,
+      collections: true,
     },
   });
 
-  if (!existingFaq) {
-    return null;
+  if (!faq) {
+    throw new Response("FAQ not found.", {
+      status: 404,
+    });
   }
 
-  return prisma.$transaction(async (tx) => {
-    const duplicate = await tx.faq.create({
+  const duplicatedFaq = await prisma.$transaction(async (tx) => {
+    const createdFaq = await tx.faq.create({
       data: {
         shop,
-        question: `${existingFaq.question} (Copy)`,
-        answer: existingFaq.answer,
-        categoryId: existingFaq.categoryId,
+        categoryId: faq.categoryId,
+        question: `${faq.question} (Copy)`,
+        answer: faq.answer,
         status: "draft",
+        sortOrder: faq.sortOrder,
       },
     });
 
-    if (existingFaq.groups.length > 0) {
+    if (faq.groups.length) {
       await tx.faqGroup.createMany({
-        data: existingFaq.groups.map((group) => ({
-          faqId: duplicate.id,
-          groupId: group.groupId,
-          sortOrder: group.sortOrder,
+        data: faq.groups.map((faqGroup) => ({
+          faqId: createdFaq.id,
+          groupId: faqGroup.groupId,
+          sortOrder: faqGroup.sortOrder,
         })),
       });
     }
 
-    if (existingFaq.products.length > 0) {
+    if (faq.products.length) {
       await tx.faqProduct.createMany({
-        data: existingFaq.products.map((product) => ({
-          faqId: duplicate.id,
-          productGid: product.productGid,
-          sortOrder: product.sortOrder,
+        data: faq.products.map((faqProduct) => ({
+          faqId: createdFaq.id,
+          productGid: faqProduct.productGid,
+          sortOrder: faqProduct.sortOrder,
         })),
       });
     }
 
-    if (existingFaq.collections.length > 0) {
+    if (faq.collections.length) {
       await tx.faqCollection.createMany({
-        data: existingFaq.collections.map((collection) => ({
-          faqId: duplicate.id,
-          collectionGid: collection.collectionGid,
-          sortOrder: collection.sortOrder,
+        data: faq.collections.map((faqCollection) => ({
+          faqId: createdFaq.id,
+          collectionGid: faqCollection.collectionGid,
+          sortOrder: faqCollection.sortOrder,
         })),
       });
     }
 
-    return duplicate;
+    return createdFaq;
   });
+
+  return duplicatedFaq;
 }
 
 export async function loader({ request }) {
@@ -149,23 +139,24 @@ export async function loader({ request }) {
   const url = new URL(request.url);
 
   const search = url.searchParams.get("search")?.trim() || "";
-  const statusParam = url.searchParams.get("status") || "all";
-  const categoryParam = url.searchParams.get("category") || "all";
+  const status = url.searchParams.get("status")?.trim() || "";
+  const categoryId = url.searchParams.get("categoryId")?.trim() || "";
+  const pageParam = Number(url.searchParams.get("page") || 1);
 
-  const status = statusParam === "all" ? "" : statusParam;
-  const categoryId = categoryParam === "all" ? "" : categoryParam;
-
-  const requestedPage = Number.parseInt(
-    url.searchParams.get("page") || "1",
-    10,
-  );
-
-  const requestedPageNumber =
-    Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const page = Number.isInteger(pageParam) && pageParam > 0 ? pageParam : 1;
 
   const where = {
     shop: session.shop,
-
+    ...(status
+      ? {
+          status,
+        }
+      : {}),
+    ...(categoryId
+      ? {
+          categoryId,
+        }
+      : {}),
     ...(search
       ? {
           OR: [
@@ -182,25 +173,61 @@ export async function loader({ request }) {
           ],
         }
       : {}),
-
-    ...(status ? { status } : {}),
-    ...(categoryId ? { categoryId } : {}),
   };
 
-  const [totalFaqs, categories, groups] = await Promise.all([
+  const [total, faqs, categories, groups] = await Promise.all([
     prisma.faq.count({
       where,
     }),
-
+    prisma.faq.findMany({
+      where,
+      include: {
+        category: true,
+        groups: {
+          include: {
+            group: true,
+          },
+          orderBy: [
+            {
+              sortOrder: "asc",
+            },
+            {
+              group: {
+                name: "asc",
+              },
+            },
+          ],
+        },
+        products: true,
+        collections: true,
+      },
+      orderBy: [
+        {
+          sortOrder: "asc",
+        },
+        {
+          createdAt: "asc",
+        },
+        {
+          id: "asc",
+        },
+      ],
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
     prisma.category.findMany({
       where: {
         shop: session.shop,
       },
-      orderBy: {
-        name: "asc",
-      },
+      orderBy: [
+        {
+          sortOrder: "asc",
+        },
+        {
+          name: "asc",
+        },
+      ],
     }),
-
     prisma.group.findMany({
       where: {
         shop: session.shop,
@@ -216,48 +243,39 @@ export async function loader({ request }) {
     }),
   ]);
 
-  const totalPages = Math.max(Math.ceil(totalFaqs / PAGE_SIZE), 1);
-  const currentPage = Math.min(requestedPageNumber, totalPages);
-
-  const faqs = await prisma.faq.findMany({
-    where,
-
-    include: {
-      category: true,
-    },
-
-    orderBy: [
-      {
-        sortOrder: "asc",
-      },
-      {
-        createdAt: "desc",
-      },
-      {
-        id: "asc",
-      },
-    ],
-
-    skip: (currentPage - 1) * PAGE_SIZE,
-    take: PAGE_SIZE,
-  });
-
   return {
-    faqs,
+    faqs: faqs.map((faq) => ({
+      id: faq.id,
+      question: faq.question,
+      answer: faq.answer,
+      status: faq.status,
+      sortOrder: faq.sortOrder,
+      category: faq.category
+        ? {
+            id: faq.category.id,
+            name: faq.category.name,
+          }
+        : null,
+      groups: faq.groups.map((faqGroup) => ({
+        id: faqGroup.group.id,
+        name: faqGroup.group.name,
+        sortOrder: faqGroup.sortOrder,
+      })),
+      productCount: faq.products.length,
+      collectionCount: faq.collections.length,
+    })),
     categories,
     groups,
-
+    pagination: {
+      page,
+      pageSize: PAGE_SIZE,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
+    },
     filters: {
       search,
       status,
       categoryId,
-    },
-
-    pagination: {
-      page: currentPage,
-      pageSize: PAGE_SIZE,
-      totalFaqs,
-      totalPages,
     },
   };
 }
@@ -266,50 +284,139 @@ export async function action({ request }) {
   const { session } = await authenticate.admin(request);
 
   const formData = await request.formData();
-  const intent = formData.get("intent")?.toString() || "";
+  const actionType = String(formData.get("_action") || "").trim();
 
-  if (
-    intent === "bulk-publish" ||
-    intent === "bulk-draft" ||
-    intent === "bulk-delete"
-  ) {
-    const faqIds = getFaqIds(formData);
+  try {
+    if (actionType === "delete") {
+      const faqId = String(formData.get("faqId") || "").trim();
 
-    if (!faqIds.length) {
-      return {
-        success: false,
-        action: "bulk",
-        error: "Select at least one FAQ.",
-      };
-    }
+      if (!faqId) {
+        return {
+          success: false,
+          error: "FAQ ID is required.",
+        };
+      }
 
-    if (faqIds.length > PAGE_SIZE) {
-      return {
-        success: false,
-        action: "bulk",
-        error: "Too many FAQs selected.",
-      };
-    }
-
-    const existingFaqIds = await getOwnedFaqIds(session.shop, faqIds);
-
-    if (!existingFaqIds) {
-      return {
-        success: false,
-        action: "bulk",
-        error: "One or more selected FAQs could not be found.",
-      };
-    }
-
-    if (intent === "bulk-publish") {
-      const result = await prisma.faq.updateMany({
+      const deleted = await prisma.faq.deleteMany({
         where: {
-          id: {
-            in: existingFaqIds,
-          },
+          id: faqId,
           shop: session.shop,
-          status: {
-            not: "published",
+        },
+      });
+
+      if (!deleted.count) {
+        return {
+          success: false,
+          error: "FAQ not found.",
+        };
+      }
+
+      return {
+        success: true,
+        message: "FAQ deleted successfully.",
+      };
+    }
+
+    if (actionType === "toggle-status") {
+      const faqId = String(formData.get("faqId") || "").trim();
+
+      if (!faqId) {
+        return {
+          success: false,
+          error: "FAQ ID is required.",
+        };
+      }
+
+      const faq = await prisma.faq.findFirst({
+        where: {
+          id: faqId,
+          shop: session.shop,
+        },
+        select: {
+          id: true,
+          status: true,
+        },
+      });
+
+      if (!faq) {
+        return {
+          success: false,
+          error: "FAQ not found.",
+        };
+      }
+
+      const nextStatus = faq.status === "published" ? "draft" : "published";
+
+      await prisma.faq.update({
+        where: {
+          id: faq.id,
+        },
+        data: {
+          status: nextStatus,
+        },
+      });
+
+      return {
+        success: true,
+        message:
+          nextStatus === "published"
+            ? "FAQ published successfully."
+            : "FAQ moved to draft successfully.",
+      };
+    }
+
+    if (actionType === "duplicate") {
+      const faqId = String(formData.get("faqId") || "").trim();
+
+      if (!faqId) {
+        return {
+          success: false,
+          error: "FAQ ID is required.",
+        };
+      }
+
+      await duplicateFaq({
+        shop: session.shop,
+        faqId,
+      });
+
+      return {
+        success: true,
+        message: "FAQ duplicated successfully.",
+      };
+    }
+
+    if (actionType === "bulk-publish") {
+      const faqIds = getFaqIds(formData);
+
+      if (!faqIds.length) {
+        return {
+          success: false,
+          error: "Select at least one FAQ.",
+        };
+      }
+
+      if (faqIds.length > MAX_BULK_TARGETS) {
+        return {
+          success: false,
+          error: `You can update a maximum of ${MAX_BULK_TARGETS} FAQs at once.`,
+        };
+      }
+
+      const ownedFaqIds = await getOwnedFaqIds(session.shop, faqIds);
+
+      if (!ownedFaqIds.length) {
+        return {
+          success: false,
+          error: "No valid FAQs were selected.",
+        };
+      }
+
+      await prisma.faq.updateMany({
+        where: {
+          shop: session.shop,
+          id: {
+            in: ownedFaqIds,
           },
         },
         data: {
@@ -319,20 +426,43 @@ export async function action({ request }) {
 
       return {
         success: true,
-        action: "bulk-publish",
-        count: result.count,
+        message: `${ownedFaqIds.length} FAQ${
+          ownedFaqIds.length === 1 ? "" : "s"
+        } published successfully.`,
       };
     }
 
-    if (intent === "bulk-draft") {
-      const result = await prisma.faq.updateMany({
+    if (actionType === "bulk-draft") {
+      const faqIds = getFaqIds(formData);
+
+      if (!faqIds.length) {
+        return {
+          success: false,
+          error: "Select at least one FAQ.",
+        };
+      }
+
+      if (faqIds.length > MAX_BULK_TARGETS) {
+        return {
+          success: false,
+          error: `You can update a maximum of ${MAX_BULK_TARGETS} FAQs at once.`,
+        };
+      }
+
+      const ownedFaqIds = await getOwnedFaqIds(session.shop, faqIds);
+
+      if (!ownedFaqIds.length) {
+        return {
+          success: false,
+          error: "No valid FAQs were selected.",
+        };
+      }
+
+      await prisma.faq.updateMany({
         where: {
-          id: {
-            in: existingFaqIds,
-          },
           shop: session.shop,
-          status: {
-            not: "draft",
+          id: {
+            in: ownedFaqIds,
           },
         },
         data: {
@@ -342,58 +472,78 @@ export async function action({ request }) {
 
       return {
         success: true,
-        action: "bulk-draft",
-        count: result.count,
+        message: `${ownedFaqIds.length} FAQ${
+          ownedFaqIds.length === 1 ? "" : "s"
+        } moved to draft successfully.`,
       };
     }
 
-    const result = await prisma.faq.deleteMany({
-      where: {
-        id: {
-          in: existingFaqIds,
+    if (actionType === "bulk-delete") {
+      const faqIds = getFaqIds(formData);
+
+      if (!faqIds.length) {
+        return {
+          success: false,
+          error: "Select at least one FAQ.",
+        };
+      }
+
+      if (faqIds.length > MAX_BULK_TARGETS) {
+        return {
+          success: false,
+          error: `You can delete a maximum of ${MAX_BULK_TARGETS} FAQs at once.`,
+        };
+      }
+
+      const deleted = await prisma.faq.deleteMany({
+        where: {
+          shop: session.shop,
+          id: {
+            in: faqIds,
+          },
         },
-        shop: session.shop,
-      },
-    });
+      });
 
-    return {
-      success: true,
-      action: "bulk-delete",
-      count: result.count,
-    };
-  }
+      if (!deleted.count) {
+        return {
+          success: false,
+          error: "No valid FAQs were selected.",
+        };
+      }
 
-  if (intent === "bulk-category") {
-    const faqIds = getFaqIds(formData);
-    const categoryId = formData.get("categoryId")?.toString().trim() || "";
-
-    if (!faqIds.length) {
       return {
-        success: false,
-        action: "bulk-category",
-        error: "Select at least one FAQ.",
+        success: true,
+        message: `${deleted.count} FAQ${
+          deleted.count === 1 ? "" : "s"
+        } deleted successfully.`,
       };
     }
 
-    if (faqIds.length > PAGE_SIZE) {
-      return {
-        success: false,
-        action: "bulk-category",
-        error: "Too many FAQs selected.",
-      };
-    }
+    if (actionType === "bulk-category") {
+      const faqIds = getFaqIds(formData);
+      const categoryId = String(formData.get("categoryId") || "").trim();
 
-    const existingFaqIds = await getOwnedFaqIds(session.shop, faqIds);
+      if (!faqIds.length) {
+        return {
+          success: false,
+          error: "Select at least one FAQ.",
+        };
+      }
 
-    if (!existingFaqIds) {
-      return {
-        success: false,
-        action: "bulk-category",
-        error: "One or more selected FAQs could not be found.",
-      };
-    }
+      if (faqIds.length > MAX_BULK_TARGETS) {
+        return {
+          success: false,
+          error: `You can update a maximum of ${MAX_BULK_TARGETS} FAQs at once.`,
+        };
+      }
 
-    if (categoryId) {
+      if (!categoryId) {
+        return {
+          success: false,
+          error: "Select a category.",
+        };
+      }
+
       const category = await prisma.category.findFirst({
         where: {
           id: categoryId,
@@ -401,481 +551,481 @@ export async function action({ request }) {
         },
         select: {
           id: true,
+          name: true,
         },
       });
 
       if (!category) {
         return {
           success: false,
-          action: "bulk-category",
-          error: "Selected category was not found.",
+          error: "Category not found.",
         };
       }
-    }
 
-    const result = await prisma.faq.updateMany({
-      where: {
-        id: {
-          in: existingFaqIds,
+      const ownedFaqIds = await getOwnedFaqIds(session.shop, faqIds);
+
+      if (!ownedFaqIds.length) {
+        return {
+          success: false,
+          error: "No valid FAQs were selected.",
+        };
+      }
+
+      await prisma.faq.updateMany({
+        where: {
+          shop: session.shop,
+          id: {
+            in: ownedFaqIds,
+          },
         },
-        shop: session.shop,
-      },
-      data: {
-        categoryId: categoryId || null,
-      },
-    });
-
-    return {
-      success: true,
-      action: "bulk-category",
-      count: result.count,
-    };
-  }
-
-  if (intent === "bulk-group-add" || intent === "bulk-group-remove") {
-    const faqIds = getFaqIds(formData);
-    const groupId = formData.get("groupId")?.toString().trim() || "";
-
-    if (!faqIds.length) {
-      return {
-        success: false,
-        action: "bulk-group",
-        error: "Select at least one FAQ.",
-      };
-    }
-
-    if (!groupId) {
-      return {
-        success: false,
-        action: "bulk-group",
-        error: "Select a group.",
-      };
-    }
-
-    if (faqIds.length > PAGE_SIZE) {
-      return {
-        success: false,
-        action: "bulk-group",
-        error: "Too many FAQs selected.",
-      };
-    }
-
-    const existingFaqIds = await getOwnedFaqIds(session.shop, faqIds);
-
-    if (!existingFaqIds) {
-      return {
-        success: false,
-        action: "bulk-group",
-        error: "One or more selected FAQs could not be found.",
-      };
-    }
-
-    const group = await prisma.group.findFirst({
-      where: {
-        id: groupId,
-        shop: session.shop,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    if (!group) {
-      return {
-        success: false,
-        action: "bulk-group",
-        error: "Selected group was not found.",
-      };
-    }
-
-    if (intent === "bulk-group-add") {
-      let count = 0;
-
-      await prisma.$transaction(async (tx) => {
-        const existingAssignments = await tx.faqGroup.findMany({
-          where: {
-            faqId: {
-              in: existingFaqIds,
-            },
-            groupId,
-          },
-          select: {
-            faqId: true,
-          },
-        });
-
-        const existingIds = new Set(
-          existingAssignments.map((item) => item.faqId),
-        );
-
-        const newAssignments = existingFaqIds
-          .filter((faqId) => !existingIds.has(faqId))
-          .map((faqId) => ({
-            faqId,
-            groupId,
-            sortOrder: 0,
-          }));
-
-        if (newAssignments.length > 0) {
-          const result = await tx.faqGroup.createMany({
-            data: newAssignments,
-          });
-
-          count = result.count;
-        }
+        data: {
+          categoryId: category.id,
+        },
       });
 
       return {
         success: true,
-        action: "bulk-group-add",
-        count,
+        message: `${ownedFaqIds.length} FAQ${
+          ownedFaqIds.length === 1 ? "" : "s"
+        } assigned to ${category.name}.`,
       };
     }
 
-    const result = await prisma.faqGroup.deleteMany({
-      where: {
-        faqId: {
-          in: existingFaqIds,
+    if (actionType === "bulk-group-add") {
+      const faqIds = getFaqIds(formData);
+      const groupId = String(formData.get("groupId") || "").trim();
+
+      if (!faqIds.length) {
+        return {
+          success: false,
+          error: "Select at least one FAQ.",
+        };
+      }
+
+      if (faqIds.length > MAX_BULK_TARGETS) {
+        return {
+          success: false,
+          error: `You can update a maximum of ${MAX_BULK_TARGETS} FAQs at once.`,
+        };
+      }
+
+      if (!groupId) {
+        return {
+          success: false,
+          error: "Select a group.",
+        };
+      }
+
+      const group = await prisma.group.findFirst({
+        where: {
+          id: groupId,
+          shop: session.shop,
         },
-        groupId,
-      },
-    });
+        select: {
+          id: true,
+          name: true,
+        },
+      });
 
-    return {
-      success: true,
-      action: "bulk-group-remove",
-      count: result.count,
-    };
-  }
+      if (!group) {
+        return {
+          success: false,
+          error: "Group not found.",
+        };
+      }
 
-  if (
-    intent === "bulk-add-products" ||
-    intent === "bulk-add-collections" ||
-    intent === "bulk-clear-products" ||
-    intent === "bulk-clear-collections"
-  ) {
-    const faqIds = getFaqIds(formData);
+      const ownedFaqIds = await getOwnedFaqIds(session.shop, faqIds);
 
-    if (!faqIds.length) {
-      return {
-        success: false,
-        action: "bulk-targeting",
-        error: "Select at least one FAQ.",
-      };
-    }
+      if (!ownedFaqIds.length) {
+        return {
+          success: false,
+          error: "No valid FAQs were selected.",
+        };
+      }
 
-    if (faqIds.length > PAGE_SIZE) {
-      return {
-        success: false,
-        action: "bulk-targeting",
-        error: "Too many FAQs selected.",
-      };
-    }
+      const existingAssignments = await prisma.faqGroup.findMany({
+        where: {
+          groupId: group.id,
+          faqId: {
+            in: ownedFaqIds,
+          },
+        },
+        select: {
+          faqId: true,
+        },
+      });
 
-    const existingFaqIds = await getOwnedFaqIds(session.shop, faqIds);
+      const existingFaqIds = new Set(
+        existingAssignments.map((item) => item.faqId),
+      );
 
-    if (!existingFaqIds) {
-      return {
-        success: false,
-        action: "bulk-targeting",
-        error: "One or more selected FAQs could not be found.",
-      };
-    }
+      const newAssignments = ownedFaqIds
+        .filter((faqId) => !existingFaqIds.has(faqId))
+        .map((faqId) => ({
+          faqId,
+          groupId: group.id,
+          sortOrder: 0,
+        }));
 
-    if (
-      intent === "bulk-clear-products" ||
-      intent === "bulk-clear-collections"
-    ) {
-      const result =
-        intent === "bulk-clear-products"
-          ? await prisma.faqProduct.deleteMany({
-              where: {
-                faqId: {
-                  in: existingFaqIds,
-                },
-              },
-            })
-          : await prisma.faqCollection.deleteMany({
-              where: {
-                faqId: {
-                  in: existingFaqIds,
-                },
-              },
-            });
+      if (newAssignments.length) {
+        await prisma.faqGroup.createMany({
+          data: newAssignments,
+        });
+      }
 
       return {
         success: true,
-        action: intent,
-        count: result.count,
+        message: `${ownedFaqIds.length} FAQ${
+          ownedFaqIds.length === 1 ? "" : "s"
+        } assigned to ${group.name}.`,
       };
     }
 
-    const fieldName =
-      intent === "bulk-add-products" ? "productGids" : "collectionGids";
+    if (actionType === "bulk-group-remove") {
+      const faqIds = getFaqIds(formData);
+      const groupId = String(formData.get("groupId") || "").trim();
 
-    const resourceType =
-      intent === "bulk-add-products" ? "Product" : "Collection";
+      if (!faqIds.length) {
+        return {
+          success: false,
+          error: "Select at least one FAQ.",
+        };
+      }
 
-    const rawGids = [
-      ...new Set(
-        formData
-          .getAll(fieldName)
-          .map((value) => value?.toString().trim())
-          .filter(Boolean),
-      ),
-    ];
+      if (faqIds.length > MAX_BULK_TARGETS) {
+        return {
+          success: false,
+          error: `You can update a maximum of ${MAX_BULK_TARGETS} FAQs at once.`,
+        };
+      }
 
-    if (!rawGids.length) {
+      if (!groupId) {
+        return {
+          success: false,
+          error: "Select a group.",
+        };
+      }
+
+      const group = await prisma.group.findFirst({
+        where: {
+          id: groupId,
+          shop: session.shop,
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      });
+
+      if (!group) {
+        return {
+          success: false,
+          error: "Group not found.",
+        };
+      }
+
+      const deleted = await prisma.faqGroup.deleteMany({
+        where: {
+          groupId: group.id,
+          faqId: {
+            in: faqIds,
+          },
+          faq: {
+            shop: session.shop,
+          },
+        },
+      });
+
       return {
-        success: false,
-        action: "bulk-targeting",
-        error: `Select at least one ${resourceType.toLowerCase()}.`,
+        success: true,
+        message: `${deleted.count} FAQ group assignment${
+          deleted.count === 1 ? "" : "s"
+        } removed.`,
       };
     }
 
-    if (rawGids.length > MAX_BULK_TARGETS) {
-      return {
-        success: false,
-        action: "bulk-targeting",
-        error: `You can add up to ${MAX_BULK_TARGETS} targets at a time.`,
-      };
-    }
+    if (actionType === "bulk-add-products") {
+      const faqIds = getFaqIds(formData);
 
-    const normalizedGids = rawGids.map((gid) =>
-      normalizeShopifyGid(gid, resourceType),
-    );
+      const productGids = [
+        ...new Set(
+          formData
+            .getAll("productGids")
+            .map((value) => normalizeShopifyGid(value, "Product"))
+            .filter(Boolean),
+        ),
+      ];
 
-    if (normalizedGids.some((gid) => !gid)) {
-      return {
-        success: false,
-        action: "bulk-targeting",
-        error: `One or more selected ${resourceType.toLowerCase()} IDs are invalid.`,
-      };
-    }
+      if (!faqIds.length) {
+        return {
+          success: false,
+          error: "Select at least one FAQ.",
+        };
+      }
 
-    let addedCount = 0;
+      if (faqIds.length > MAX_BULK_TARGETS) {
+        return {
+          success: false,
+          error: `You can update a maximum of ${MAX_BULK_TARGETS} FAQs at once.`,
+        };
+      }
 
-    await prisma.$transaction(async (tx) => {
-      if (intent === "bulk-add-products") {
-        for (const faqId of existingFaqIds) {
-          const existingTargets = await tx.faqProduct.findMany({
-            where: {
+      if (!productGids.length) {
+        return {
+          success: false,
+          error: "Select at least one product.",
+        };
+      }
+
+      const ownedFaqIds = await getOwnedFaqIds(session.shop, faqIds);
+
+      if (!ownedFaqIds.length) {
+        return {
+          success: false,
+          error: "No valid FAQs were selected.",
+        };
+      }
+
+      const existingAssignments = await prisma.faqProduct.findMany({
+        where: {
+          faqId: {
+            in: ownedFaqIds,
+          },
+          productGid: {
+            in: productGids,
+          },
+        },
+        select: {
+          faqId: true,
+          productGid: true,
+        },
+      });
+
+      const existingKeys = new Set(
+        existingAssignments.map((item) => `${item.faqId}:${item.productGid}`),
+      );
+
+      const assignments = [];
+
+      for (const faqId of ownedFaqIds) {
+        for (const productGid of productGids) {
+          const key = `${faqId}:${productGid}`;
+
+          if (!existingKeys.has(key)) {
+            assignments.push({
               faqId,
-              productGid: {
-                in: normalizedGids,
-              },
-            },
-            select: {
-              productGid: true,
-            },
-          });
-
-          const existingTargetIds = new Set(
-            existingTargets.map((target) => target.productGid),
-          );
-
-          const missingTargets = normalizedGids.filter(
-            (gid) => !existingTargetIds.has(gid),
-          );
-
-          if (missingTargets.length > 0) {
-            const result = await tx.faqProduct.createMany({
-              data: missingTargets.map((productGid) => ({
-                faqId,
-                productGid,
-                sortOrder: 0,
-              })),
+              productGid,
+              sortOrder: 0,
             });
-
-            addedCount += result.count;
-          }
-        }
-      } else {
-        for (const faqId of existingFaqIds) {
-          const existingTargets = await tx.faqCollection.findMany({
-            where: {
-              faqId,
-              collectionGid: {
-                in: normalizedGids,
-              },
-            },
-            select: {
-              collectionGid: true,
-            },
-          });
-
-          const existingTargetIds = new Set(
-            existingTargets.map((target) => target.collectionGid),
-          );
-
-          const missingTargets = normalizedGids.filter(
-            (gid) => !existingTargetIds.has(gid),
-          );
-
-          if (missingTargets.length > 0) {
-            const result = await tx.faqCollection.createMany({
-              data: missingTargets.map((collectionGid) => ({
-                faqId,
-                collectionGid,
-                sortOrder: 0,
-              })),
-            });
-
-            addedCount += result.count;
           }
         }
       }
-    });
 
-    return {
-      success: true,
-      action: intent,
-      count: addedCount,
-    };
-  }
+      if (assignments.length) {
+        await prisma.faqProduct.createMany({
+          data: assignments,
+        });
+      }
 
-  if (intent === "duplicate") {
-    const faqId = formData.get("faqId")?.toString() || "";
-
-    if (!faqId) {
       return {
-        success: false,
-        error: "FAQ ID is required.",
+        success: true,
+        message: `${ownedFaqIds.length} FAQ${
+          ownedFaqIds.length === 1 ? "" : "s"
+        } updated with product targeting.`,
       };
     }
 
-    const duplicate = await duplicateFaq(session.shop, faqId);
+    if (actionType === "bulk-add-collections") {
+      const faqIds = getFaqIds(formData);
 
-    if (!duplicate) {
+      const collectionGids = [
+        ...new Set(
+          formData
+            .getAll("collectionGids")
+            .map((value) => normalizeShopifyGid(value, "Collection"))
+            .filter(Boolean),
+        ),
+      ];
+
+      if (!faqIds.length) {
+        return {
+          success: false,
+          error: "Select at least one FAQ.",
+        };
+      }
+
+      if (faqIds.length > MAX_BULK_TARGETS) {
+        return {
+          success: false,
+          error: `You can update a maximum of ${MAX_BULK_TARGETS} FAQs at once.`,
+        };
+      }
+
+      if (!collectionGids.length) {
+        return {
+          success: false,
+          error: "Select at least one collection.",
+        };
+      }
+
+      const ownedFaqIds = await getOwnedFaqIds(session.shop, faqIds);
+
+      if (!ownedFaqIds.length) {
+        return {
+          success: false,
+          error: "No valid FAQs were selected.",
+        };
+      }
+
+      const existingAssignments = await prisma.faqCollection.findMany({
+        where: {
+          faqId: {
+            in: ownedFaqIds,
+          },
+          collectionGid: {
+            in: collectionGids,
+          },
+        },
+        select: {
+          faqId: true,
+          collectionGid: true,
+        },
+      });
+
+      const existingKeys = new Set(
+        existingAssignments.map(
+          (item) => `${item.faqId}:${item.collectionGid}`,
+        ),
+      );
+
+      const assignments = [];
+
+      for (const faqId of ownedFaqIds) {
+        for (const collectionGid of collectionGids) {
+          const key = `${faqId}:${collectionGid}`;
+
+          if (!existingKeys.has(key)) {
+            assignments.push({
+              faqId,
+              collectionGid,
+              sortOrder: 0,
+            });
+          }
+        }
+      }
+
+      if (assignments.length) {
+        await prisma.faqCollection.createMany({
+          data: assignments,
+        });
+      }
+
       return {
-        success: false,
-        error: "FAQ not found.",
+        success: true,
+        message: `${ownedFaqIds.length} FAQ${
+          ownedFaqIds.length === 1 ? "" : "s"
+        } updated with collection targeting.`,
+      };
+    }
+
+    if (actionType === "bulk-clear-products") {
+      const faqIds = getFaqIds(formData);
+
+      if (!faqIds.length) {
+        return {
+          success: false,
+          error: "Select at least one FAQ.",
+        };
+      }
+
+      if (faqIds.length > MAX_BULK_TARGETS) {
+        return {
+          success: false,
+          error: `You can update a maximum of ${MAX_BULK_TARGETS} FAQs at once.`,
+        };
+      }
+
+      const deleted = await prisma.faqProduct.deleteMany({
+        where: {
+          faqId: {
+            in: faqIds,
+          },
+          faq: {
+            shop: session.shop,
+          },
+        },
+      });
+
+      return {
+        success: true,
+        message: `${deleted.count} product targeting assignment${
+          deleted.count === 1 ? "" : "s"
+        } removed.`,
+      };
+    }
+
+    if (actionType === "bulk-clear-collections") {
+      const faqIds = getFaqIds(formData);
+
+      if (!faqIds.length) {
+        return {
+          success: false,
+          error: "Select at least one FAQ.",
+        };
+      }
+
+      if (faqIds.length > MAX_BULK_TARGETS) {
+        return {
+          success: false,
+          error: `You can update a maximum of ${MAX_BULK_TARGETS} FAQs at once.`,
+        };
+      }
+
+      const deleted = await prisma.faqCollection.deleteMany({
+        where: {
+          faqId: {
+            in: faqIds,
+          },
+          faq: {
+            shop: session.shop,
+          },
+        },
+      });
+
+      return {
+        success: true,
+        message: `${deleted.count} collection targeting assignment${
+          deleted.count === 1 ? "" : "s"
+        } removed.`,
       };
     }
 
     return {
-      success: true,
-      action: "duplicate",
-      count: 1,
-      duplicateId: duplicate.id,
+      success: false,
+      error: "Unsupported action.",
     };
-  }
+  } catch (error) {
+    console.error("FAQ management action error:", error);
 
-  const faqId = formData.get("faqId")?.toString() || "";
-
-  if (!faqId) {
     return {
       success: false,
-      error: "FAQ ID is required.",
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to complete the requested action.",
     };
   }
-
-  const existingFaq = await prisma.faq.findFirst({
-    where: {
-      id: faqId,
-      shop: session.shop,
-    },
-  });
-
-  if (!existingFaq) {
-    return {
-      success: false,
-      error: "FAQ not found.",
-    };
-  }
-
-  if (intent === "delete") {
-    await prisma.faq.delete({
-      where: {
-        id: existingFaq.id,
-      },
-    });
-
-    return {
-      success: true,
-      action: "delete",
-    };
-  }
-
-  if (intent === "toggle-status") {
-    const nextStatus =
-      existingFaq.status === "published" ? "draft" : "published";
-
-    await prisma.faq.update({
-      where: {
-        id: existingFaq.id,
-      },
-      data: {
-        status: nextStatus,
-      },
-    });
-
-    return {
-      success: true,
-      action: "toggle-status",
-      status: nextStatus,
-    };
-  }
-
-  return {
-    success: false,
-    error: "Invalid action.",
-  };
-}
-
-function getStatusLabel(status) {
-  return status === "published" ? "Published" : "Draft";
-}
-
-function getStatusTone(status) {
-  return status === "published" ? "success" : "neutral";
-}
-
-function buildPageUrl(filters, page) {
-  const params = new URLSearchParams();
-
-  if (filters.search) {
-    params.set("search", filters.search);
-  }
-
-  if (filters.status) {
-    params.set("status", filters.status);
-  }
-
-  if (filters.categoryId) {
-    params.set("category", filters.categoryId);
-  }
-
-  if (page > 1) {
-    params.set("page", page.toString());
-  }
-
-  const queryString = params.toString();
-
-  return `/app/faqs${queryString ? `?${queryString}` : ""}`;
 }
 
 function getAnswerPreview(answer) {
-  if (!answer) {
-    return "No answer provided.";
-  }
-
-  return answer
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<\/p>/gi, " ")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
+  return String(answer || "")
+    .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 export default function FAQs() {
-  const { faqs, categories, groups, filters, pagination } = useLoaderData();
+  const { faqs, categories, groups, pagination, filters } = useLoaderData();
 
   const actionData = useActionData();
   const navigation = useNavigation();
@@ -883,228 +1033,123 @@ export default function FAQs() {
   const shopify = useAppBridge();
 
   const [selectedFaqIds, setSelectedFaqIds] = React.useState([]);
+
   const [bulkCategoryId, setBulkCategoryId] = React.useState("");
+
   const [bulkGroupId, setBulkGroupId] = React.useState("");
-  const [clientError, setClientError] = React.useState("");
 
   const isSubmitting = navigation.state === "submitting";
 
-  const submittingFaqId =
-    isSubmitting && navigation.formData?.get("faqId")
-      ? navigation.formData.get("faqId").toString()
-      : null;
+  const currentPageIds = faqs.map((faq) => faq.id);
 
-  const submittingIntent =
-    isSubmitting && navigation.formData?.get("intent")
-      ? navigation.formData.get("intent").toString()
-      : null;
+  const allCurrentPageSelected =
+    currentPageIds.length > 0 &&
+    currentPageIds.every((id) => selectedFaqIds.includes(id));
 
-  const visibleFaqIds = React.useMemo(() => faqs.map((faq) => faq.id), [faqs]);
-
-  const selectedVisibleFaqIds = selectedFaqIds.filter((faqId) =>
-    visibleFaqIds.includes(faqId),
+  const someCurrentPageSelected = currentPageIds.some((id) =>
+    selectedFaqIds.includes(id),
   );
 
-  const selectedCount = selectedVisibleFaqIds.length;
-
-  const allVisibleSelected = faqs.length > 0 && selectedCount === faqs.length;
-
-  const someVisibleSelected = selectedCount > 0 && selectedCount < faqs.length;
-
-  React.useEffect(() => {
-    setSelectedFaqIds((currentIds) =>
-      currentIds.filter((faqId) => visibleFaqIds.includes(faqId)),
+  function toggleFaqSelection(faqId) {
+    setSelectedFaqIds((current) =>
+      current.includes(faqId)
+        ? current.filter((id) => id !== faqId)
+        : [...current, faqId],
     );
-  }, [visibleFaqIds]);
-
-  React.useEffect(() => {
-    if (actionData?.success && actionData.action?.startsWith("bulk-")) {
-      setSelectedFaqIds([]);
-    }
-  }, [actionData]);
-
-  function handleSelectFaq(faqId, checked) {
-    setSelectedFaqIds((currentIds) => {
-      if (checked) {
-        if (currentIds.includes(faqId)) {
-          return currentIds;
-        }
-
-        return [...currentIds, faqId];
-      }
-
-      return currentIds.filter((id) => id !== faqId);
-    });
   }
 
-  function handleSelectAll(checked) {
-    if (checked) {
-      setSelectedFaqIds((currentIds) => [
-        ...new Set([...currentIds, ...visibleFaqIds]),
-      ]);
+  function toggleCurrentPageSelection() {
+    if (allCurrentPageSelected) {
+      setSelectedFaqIds((current) =>
+        current.filter((id) => !currentPageIds.includes(id)),
+      );
 
       return;
     }
 
-    setSelectedFaqIds((currentIds) =>
-      currentIds.filter((faqId) => !visibleFaqIds.includes(faqId)),
-    );
+    setSelectedFaqIds((current) => [
+      ...new Set([...current, ...currentPageIds]),
+    ]);
   }
 
-  function handleClearSelection() {
+  function clearSelection() {
     setSelectedFaqIds([]);
   }
 
-  function buildBulkFormData(intent) {
+  function submitBulkAction(actionType, extraFields = {}) {
+    if (!selectedFaqIds.length) {
+      return;
+    }
+
     const formData = new FormData();
 
-    formData.append("intent", intent);
+    formData.append("_action", actionType);
 
-    selectedVisibleFaqIds.forEach((faqId) => {
+    selectedFaqIds.forEach((faqId) => {
       formData.append("faqIds", faqId);
     });
 
-    return formData;
-  }
-
-  function handleBulkAction(intent) {
-    if (!selectedVisibleFaqIds.length) {
-      return;
-    }
-
-    if (intent === "bulk-delete") {
-      const confirmed = window.confirm(
-        `Are you sure you want to delete ${
-          selectedVisibleFaqIds.length
-        } selected ${selectedVisibleFaqIds.length === 1 ? "FAQ" : "FAQs"}?`,
-      );
-
-      if (!confirmed) {
-        return;
+    Object.entries(extraFields).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        value.forEach((item) => {
+          formData.append(key, item);
+        });
+      } else if (value !== null && value !== undefined) {
+        formData.append(key, value);
       }
-    }
-
-    submit(buildBulkFormData(intent), {
-      method: "post",
     });
-  }
-
-  function handleBulkCategory() {
-    if (!selectedVisibleFaqIds.length) {
-      return;
-    }
-
-    const formData = buildBulkFormData("bulk-category");
-
-    formData.append("categoryId", bulkCategoryId);
 
     submit(formData, {
       method: "post",
     });
-
-    setBulkCategoryId("");
   }
 
-  function handleBulkGroup(intent) {
-    if (!selectedVisibleFaqIds.length || !bulkGroupId) {
+  async function handleBulkProducts() {
+    if (!selectedFaqIds.length) {
       return;
     }
 
-    const formData = buildBulkFormData(intent);
-
-    formData.append("groupId", bulkGroupId);
-
-    submit(formData, {
-      method: "post",
+    const selected = await shopify.resourcePicker({
+      type: "product",
+      action: "select",
+      multiple: true,
+      filter: {
+        variants: false,
+      },
     });
 
-    setBulkGroupId("");
+    if (!selected?.length) {
+      return;
+    }
+
+    const productGids = selected.map((product) => product.id).filter(Boolean);
+
+    submitBulkAction("bulk-add-products", {
+      productGids,
+    });
   }
 
-  async function handleBulkResourcePick(resourceType) {
-    if (!selectedVisibleFaqIds.length) {
+  async function handleBulkCollections() {
+    if (!selectedFaqIds.length) {
       return;
     }
 
-    setClientError("");
+    const selected = await shopify.resourcePicker({
+      type: "collection",
+      action: "select",
+      multiple: true,
+    });
 
-    try {
-      const selected = await shopify.resourcePicker({
-        type: resourceType,
-        action: "add",
-        multiple: true,
-        filter:
-          resourceType === "product"
-            ? {
-                variants: false,
-              }
-            : undefined,
-      });
-
-      if (!selected) {
-        return;
-      }
-
-      if (selected.length > MAX_BULK_TARGETS) {
-        setClientError(
-          `You can add up to ${MAX_BULK_TARGETS} targets at a time.`,
-        );
-
-        return;
-      }
-
-      const formData = buildBulkFormData(
-        resourceType === "product"
-          ? "bulk-add-products"
-          : "bulk-add-collections",
-      );
-
-      selected.forEach((resource) => {
-        formData.append(
-          resourceType === "product" ? "productGids" : "collectionGids",
-          resource.id,
-        );
-      });
-
-      submit(formData, {
-        method: "post",
-      });
-    } catch (error) {
-      console.error("FAQFlow bulk resource picker error:", error);
-
-      setClientError(
-        `Unable to select ${
-          resourceType === "product" ? "products" : "collections"
-        }.`,
-      );
-    }
-  }
-
-  function handleClearTargets(targetType) {
-    if (!selectedVisibleFaqIds.length) {
+    if (!selected?.length) {
       return;
     }
 
-    const label =
-      targetType === "products" ? "product targeting" : "collection targeting";
+    const collectionGids = selected
+      .map((collection) => collection.id)
+      .filter(Boolean);
 
-    const confirmed = window.confirm(
-      `Clear ${label} from ${selectedVisibleFaqIds.length} selected ${
-        selectedVisibleFaqIds.length === 1 ? "FAQ" : "FAQs"
-      }?`,
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    const intent =
-      targetType === "products"
-        ? "bulk-clear-products"
-        : "bulk-clear-collections";
-
-    submit(buildBulkFormData(intent), {
-      method: "post",
+    submitBulkAction("bulk-add-collections", {
+      collectionGids,
     });
   }
 
@@ -1117,151 +1162,132 @@ export default function FAQs() {
       return;
     }
 
-    submit(
-      {
-        intent: "delete",
-        faqId,
-      },
-      {
-        method: "post",
-      },
-    );
-  }
+    const formData = new FormData();
 
-  function handleToggleStatus(faqId) {
-    submit(
-      {
-        intent: "toggle-status",
-        faqId,
-      },
-      {
-        method: "post",
-      },
-    );
+    formData.append("_action", "delete");
+    formData.append("faqId", faqId);
+
+    submit(formData, {
+      method: "post",
+    });
   }
 
   function handleDuplicate(faqId) {
-    submit(
-      {
-        intent: "duplicate",
-        faqId,
-      },
-      {
-        method: "post",
-      },
-    );
+    const formData = new FormData();
+
+    formData.append("_action", "duplicate");
+    formData.append("faqId", faqId);
+
+    submit(formData, {
+      method: "post",
+    });
   }
 
-  const hasActiveFilters =
-    Boolean(filters.search) ||
-    Boolean(filters.status) ||
-    Boolean(filters.categoryId);
+  function handleToggleStatus(faqId) {
+    const formData = new FormData();
 
-  const successMessage =
-    actionData?.success && actionData?.action === "bulk-publish"
-      ? `${actionData.count} ${
-          actionData.count === 1 ? "FAQ was" : "FAQs were"
-        } published.`
-      : actionData?.success && actionData?.action === "bulk-draft"
-        ? `${actionData.count} ${
-            actionData.count === 1 ? "FAQ was" : "FAQs were"
-          } moved to draft.`
-        : actionData?.success && actionData?.action === "bulk-delete"
-          ? `${actionData.count} ${
-              actionData.count === 1 ? "FAQ was" : "FAQs were"
-            } deleted.`
-          : actionData?.success && actionData?.action === "bulk-category"
-            ? `${actionData.count} ${
-                actionData.count === 1 ? "FAQ was" : "FAQs were"
-              } updated with the selected category.`
-            : actionData?.success && actionData?.action === "bulk-group-add"
-              ? `${actionData.count} ${
-                  actionData.count === 1 ? "FAQ was" : "FAQs were"
-                } assigned to the group.`
-              : actionData?.success &&
-                  actionData?.action === "bulk-group-remove"
-                ? `${actionData.count} ${
-                    actionData.count === 1
-                      ? "FAQ group assignment was"
-                      : "FAQ group assignments were"
-                  } removed.`
-                : actionData?.success &&
-                    actionData?.action === "bulk-add-products"
-                  ? `${actionData.count} product ${
-                      actionData.count === 1 ? "target was" : "targets were"
-                    } added.`
-                  : actionData?.success &&
-                      actionData?.action === "bulk-add-collections"
-                    ? `${actionData.count} collection ${
-                        actionData.count === 1 ? "target was" : "targets were"
-                      } added.`
-                    : actionData?.success &&
-                        actionData?.action === "bulk-clear-products"
-                      ? `${actionData.count} product ${
-                          actionData.count === 1 ? "target was" : "targets were"
-                        } cleared.`
-                      : actionData?.success &&
-                          actionData?.action === "bulk-clear-collections"
-                        ? `${actionData.count} collection ${
-                            actionData.count === 1
-                              ? "target was"
-                              : "targets were"
-                          } cleared.`
-                        : actionData?.success &&
-                            actionData?.action === "duplicate"
-                          ? "FAQ duplicated as a draft."
-                          : actionData?.success &&
-                              actionData?.action === "toggle-status"
-                            ? `FAQ ${
-                                actionData.status === "published"
-                                  ? "published"
-                                  : "moved to draft"
-                              }.`
-                            : null;
+    formData.append("_action", "toggle-status");
+    formData.append("faqId", faqId);
+
+    submit(formData, {
+      method: "post",
+    });
+  }
+
+  function buildFilterUrl(nextFilters) {
+    const params = new URLSearchParams();
+
+    if (nextFilters.search) {
+      params.set("search", nextFilters.search);
+    }
+
+    if (nextFilters.status) {
+      params.set("status", nextFilters.status);
+    }
+
+    if (nextFilters.categoryId) {
+      params.set("categoryId", nextFilters.categoryId);
+    }
+
+    if (nextFilters.page && nextFilters.page > 1) {
+      params.set("page", String(nextFilters.page));
+    }
+
+    const queryString = params.toString();
+
+    return queryString ? `/app/faqs?${queryString}` : "/app/faqs";
+  }
+
+  function applyFilters(event) {
+    event.preventDefault();
+
+    const formData = new FormData(event.currentTarget);
+
+    const search = String(formData.get("search") || "").trim();
+
+    const status = String(formData.get("status") || "").trim();
+
+    const categoryId = String(formData.get("categoryId") || "").trim();
+
+    window.location.href = buildFilterUrl({
+      search,
+      status,
+      categoryId,
+      page: 1,
+    });
+  }
+
+  function goToPage(page) {
+    window.location.href = buildFilterUrl({
+      ...filters,
+      page,
+    });
+  }
 
   return (
     <s-page heading="FAQs">
-      <s-button slot="primary-action" variant="primary" href="/app/faqs/new">
-        Create FAQ
-      </s-button>
+      <s-stack gap="base">
+        {actionData?.success ? (
+          <s-banner tone="success">{actionData.message}</s-banner>
+        ) : null}
 
-      <s-section>
-        <s-stack direction="block" gap="base">
-          <s-stack direction="block" gap="small">
-            <s-heading>FAQ Management</s-heading>
+        {actionData?.error ? (
+          <s-banner tone="critical">{actionData.error}</s-banner>
+        ) : null}
 
-            <s-text tone="neutral">
-              Create, manage, publish, duplicate, and target your store&apos;s FAQs.
-            </s-text>
-          </s-stack>
+        <s-section>
+          <s-stack gap="base">
+            <s-stack direction="inline" gap="base" alignItems="center">
+              <s-heading>FAQ Management</s-heading>
 
-          <Form method="get">
-            <s-stack direction="block" gap="base">
-              <s-text-field
-                name="search"
-                label="Search FAQs"
-                placeholder="Search by question or answer"
-                value={filters.search}
-                autocomplete="off"
-              />
+              <s-button href="/app/faqs/new" variant="primary">
+                Create FAQ
+              </s-button>
+            </s-stack>
 
-              <s-stack direction="inline" gap="base">
-                <s-select
-                  name="status"
-                  label="Status"
-                  value={filters.status || "all"}
-                >
-                  <s-option value="all">All statuses</s-option>
-                  <s-option value="published">Published</s-option>
+            <form onSubmit={applyFilters}>
+              <s-stack gap="base">
+                <s-text-field
+                  name="search"
+                  label="Search FAQs"
+                  placeholder="Search by question or answer"
+                  value={filters.search}
+                />
+
+                <s-select name="status" label="Status" value={filters.status}>
+                  <s-option value="">All statuses</s-option>
+
                   <s-option value="draft">Draft</s-option>
+
+                  <s-option value="published">Published</s-option>
                 </s-select>
 
                 <s-select
-                  name="category"
+                  name="categoryId"
                   label="Category"
-                  value={filters.categoryId || "all"}
+                  value={filters.categoryId}
                 >
-                  <s-option value="all">All categories</s-option>
+                  <s-option value="">All categories</s-option>
 
                   {categories.map((category) => (
                     <s-option key={category.id} value={category.id}>
@@ -1269,149 +1295,82 @@ export default function FAQs() {
                     </s-option>
                   ))}
                 </s-select>
+
+                <s-button type="submit">Apply Filters</s-button>
               </s-stack>
-
-              <s-stack direction="inline" gap="small">
-                <s-button type="submit" variant="primary">
-                  Search
-                </s-button>
-
-                {hasActiveFilters ? (
-                  <s-button href="/app/faqs">Clear filters</s-button>
-                ) : null}
-              </s-stack>
-            </s-stack>
-          </Form>
-        </s-stack>
-      </s-section>
-
-      {clientError ? (
-        <s-section>
-          <s-banner heading="Bulk targeting error" tone="critical">
-            {clientError}
-          </s-banner>
+            </form>
+          </s-stack>
         </s-section>
-      ) : null}
 
-      {actionData?.error ? (
         <s-section>
-          <s-banner heading="Action could not be completed" tone="critical">
-            {actionData.error}
-          </s-banner>
-        </s-section>
-      ) : null}
-
-      {successMessage ? (
-        <s-section>
-          <s-banner heading="FAQ updated" tone="success" dismissible>
-            {successMessage}
-          </s-banner>
-        </s-section>
-      ) : null}
-
-      <s-section>
-        <s-stack direction="block" gap="base">
-          <s-stack
-            direction="inline"
-            justifyContent="space-between"
-            alignItems="center"
-            gap="base"
-          >
+          <s-stack gap="base">
             <s-stack direction="inline" gap="base" alignItems="center">
               <s-checkbox
-                label="Select all FAQs on this page"
-                checked={allVisibleSelected}
-                indeterminate={someVisibleSelected}
-                disabled={isSubmitting || faqs.length === 0}
-                onChange={(event) =>
-                  handleSelectAll(event.currentTarget.checked)
+                checked={allCurrentPageSelected}
+                indeterminate={
+                  someCurrentPageSelected && !allCurrentPageSelected
                 }
-              />
+                onChange={toggleCurrentPageSelection}
+              >
+                Select current page
+              </s-checkbox>
 
-              <s-heading>FAQs ({pagination.totalFaqs})</s-heading>
+              {selectedFaqIds.length ? (
+                <s-text>{selectedFaqIds.length} selected</s-text>
+              ) : null}
+
+              {selectedFaqIds.length ? (
+                <s-button onClick={clearSelection}>Clear Selection</s-button>
+              ) : null}
             </s-stack>
 
-            {pagination.totalFaqs > 0 ? (
-              <s-text tone="neutral">
-                Page {pagination.page} of {pagination.totalPages}
-              </s-text>
-            ) : null}
-          </s-stack>
+            {selectedFaqIds.length ? (
+              <s-section>
+                <s-stack gap="base">
+                  <s-heading>Bulk Actions</s-heading>
 
-          {selectedCount > 0 ? (
-            <s-box
-              padding="base"
-              border="base"
-              borderRadius="base"
-              background="subdued"
-            >
-              <s-stack direction="block" gap="base">
-                <s-stack
-                  direction="inline"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  gap="base"
-                >
-                  <s-stack direction="inline" gap="base" alignItems="center">
-                    <s-text>
-                      {selectedCount} {selectedCount === 1 ? "FAQ" : "FAQs"}{" "}
-                      selected
-                    </s-text>
-
+                  <s-stack direction="inline" gap="base">
                     <s-button
-                      onClick={handleClearSelection}
-                      disabled={isSubmitting}
-                    >
-                      Clear selection
-                    </s-button>
-                  </s-stack>
-
-                  <s-stack direction="inline" gap="small">
-                    <s-button
-                      variant="primary"
-                      onClick={() => handleBulkAction("bulk-publish")}
-                      loading={
-                        submittingIntent === "bulk-publish" && isSubmitting
-                      }
+                      onClick={() => submitBulkAction("bulk-publish")}
                       disabled={isSubmitting}
                     >
                       Publish
                     </s-button>
 
                     <s-button
-                      onClick={() => handleBulkAction("bulk-draft")}
-                      loading={
-                        submittingIntent === "bulk-draft" && isSubmitting
-                      }
+                      onClick={() => submitBulkAction("bulk-draft")}
                       disabled={isSubmitting}
                     >
-                      Move to draft
+                      Move to Draft
                     </s-button>
 
                     <s-button
                       tone="critical"
-                      onClick={() => handleBulkAction("bulk-delete")}
-                      loading={
-                        submittingIntent === "bulk-delete" && isSubmitting
-                      }
+                      onClick={() => {
+                        const confirmed = window.confirm(
+                          `Delete ${selectedFaqIds.length} selected FAQ${
+                            selectedFaqIds.length === 1 ? "" : "s"
+                          }?`,
+                        );
+
+                        if (confirmed) {
+                          submitBulkAction("bulk-delete");
+                        }
+                      }}
                       disabled={isSubmitting}
                     >
                       Delete
                     </s-button>
                   </s-stack>
-                </s-stack>
 
-                <s-divider />
-
-                <s-stack direction="inline" gap="base" alignItems="end">
                   <s-select
-                    label="Category"
+                    label="Assign Category"
                     value={bulkCategoryId}
                     onChange={(event) =>
                       setBulkCategoryId(event.currentTarget.value)
                     }
                   >
-                    <s-option value="">Uncategorized</s-option>
+                    <s-option value="">Select category</s-option>
 
                     {categories.map((category) => (
                       <s-option key={category.id} value={category.id}>
@@ -1421,17 +1380,20 @@ export default function FAQs() {
                   </s-select>
 
                   <s-button
-                    onClick={handleBulkCategory}
-                    disabled={isSubmitting}
-                    loading={
-                      submittingIntent === "bulk-category" && isSubmitting
-                    }
-                  >
-                    Set category
-                  </s-button>
-                </s-stack>
+                    onClick={() => {
+                      if (!bulkCategoryId) {
+                        return;
+                      }
 
-                <s-stack direction="inline" gap="base" alignItems="end">
+                      submitBulkAction("bulk-category", {
+                        categoryId: bulkCategoryId,
+                      });
+                    }}
+                    disabled={!bulkCategoryId || isSubmitting}
+                  >
+                    Apply Category
+                  </s-button>
+
                   <s-select
                     label="Group"
                     value={bulkGroupId}
@@ -1448,222 +1410,191 @@ export default function FAQs() {
                     ))}
                   </s-select>
 
-                  <s-button
-                    onClick={() => handleBulkGroup("bulk-group-add")}
-                    disabled={isSubmitting || !bulkGroupId}
-                  >
-                    Add group
-                  </s-button>
+                  <s-stack direction="inline" gap="base">
+                    <s-button
+                      onClick={() => {
+                        if (!bulkGroupId) {
+                          return;
+                        }
 
-                  <s-button
-                    onClick={() => handleBulkGroup("bulk-group-remove")}
-                    disabled={isSubmitting || !bulkGroupId}
-                  >
-                    Remove group
-                  </s-button>
+                        submitBulkAction("bulk-group-add", {
+                          groupId: bulkGroupId,
+                        });
+                      }}
+                      disabled={!bulkGroupId || isSubmitting}
+                    >
+                      Add to Group
+                    </s-button>
+
+                    <s-button
+                      onClick={() => {
+                        if (!bulkGroupId) {
+                          return;
+                        }
+
+                        submitBulkAction("bulk-group-remove", {
+                          groupId: bulkGroupId,
+                        });
+                      }}
+                      disabled={!bulkGroupId || isSubmitting}
+                    >
+                      Remove from Group
+                    </s-button>
+                  </s-stack>
+
+                  <s-stack direction="inline" gap="base">
+                    <s-button
+                      onClick={handleBulkProducts}
+                      disabled={isSubmitting}
+                    >
+                      Add Products
+                    </s-button>
+
+                    <s-button
+                      onClick={handleBulkCollections}
+                      disabled={isSubmitting}
+                    >
+                      Add Collections
+                    </s-button>
+                  </s-stack>
+
+                  <s-stack direction="inline" gap="base">
+                    <s-button
+                      onClick={() => submitBulkAction("bulk-clear-products")}
+                      disabled={isSubmitting}
+                    >
+                      Clear Products
+                    </s-button>
+
+                    <s-button
+                      onClick={() => submitBulkAction("bulk-clear-collections")}
+                      disabled={isSubmitting}
+                    >
+                      Clear Collections
+                    </s-button>
+                  </s-stack>
                 </s-stack>
+              </s-section>
+            ) : null}
 
-                <s-stack direction="inline" gap="small" alignItems="center">
-                  <s-text emphasis="strong">Targeting</s-text>
+            {faqs.length === 0 ? (
+              <s-banner>
+                No FAQs found. Create your first FAQ to get started.
+              </s-banner>
+            ) : (
+              <s-stack gap="base">
+                {faqs.map((faq) => {
+                  const answerPreview = getAnswerPreview(faq.answer);
 
-                  <s-button
-                    onClick={() => handleBulkResourcePick("product")}
-                    disabled={isSubmitting}
-                  >
-                    Add products
-                  </s-button>
-
-                  <s-button
-                    onClick={() => handleBulkResourcePick("collection")}
-                    disabled={isSubmitting}
-                  >
-                    Add collections
-                  </s-button>
-
-                  <s-button
-                    onClick={() => handleClearTargets("products")}
-                    disabled={isSubmitting}
-                  >
-                    Clear products
-                  </s-button>
-
-                  <s-button
-                    onClick={() => handleClearTargets("collections")}
-                    disabled={isSubmitting}
-                  >
-                    Clear collections
-                  </s-button>
-                </s-stack>
-              </s-stack>
-            </s-box>
-          ) : null}
-
-          {faqs.length === 0 ? (
-            <s-box
-              padding="large"
-              border="base"
-              borderRadius="base"
-              background="subdued"
-            >
-              <s-stack direction="block" gap="base" alignItems="center">
-                <s-heading>No FAQs found</s-heading>
-
-                <s-text tone="neutral">
-                  {hasActiveFilters
-                    ? "Try changing your filters."
-                    : "Create your first FAQ to get started."}
-                </s-text>
-
-                {!hasActiveFilters ? (
-                  <s-button href="/app/faqs/new" variant="primary">
-                    Create your first FAQ
-                  </s-button>
-                ) : null}
-              </s-stack>
-            </s-box>
-          ) : (
-            <s-stack direction="block" gap="small">
-              {faqs.map((faq) => {
-                const answerPreview = getAnswerPreview(faq.answer);
-                const isFaqSubmitting = submittingFaqId === faq.id;
-                const isSelected = selectedVisibleFaqIds.includes(faq.id);
-
-                return (
-                  <s-box
-                    key={faq.id}
-                    padding="base"
-                    border="base"
-                    borderRadius="base"
-                    background="base"
-                  >
-                    <s-stack direction="block" gap="base">
-                      <s-stack
-                        direction="inline"
-                        justifyContent="space-between"
-                        alignItems="start"
-                        gap="base"
-                      >
+                  return (
+                    <s-section key={faq.id}>
+                      <s-stack gap="base">
                         <s-stack
                           direction="inline"
                           gap="base"
-                          alignItems="start"
+                          alignItems="center"
                         >
                           <s-checkbox
-                            checked={isSelected}
-                            disabled={isSubmitting}
-                            onChange={(event) =>
-                              handleSelectFaq(
-                                faq.id,
-                                event.currentTarget.checked,
-                              )
-                            }
+                            checked={selectedFaqIds.includes(faq.id)}
+                            onChange={() => toggleFaqSelection(faq.id)}
                           />
 
-                          <s-stack direction="block" gap="small">
+                          <s-stack gap="small">
                             <s-heading>{faq.question}</s-heading>
 
-                            <s-text tone="neutral">
-                              {faq.category?.name || "Uncategorized"}
+                            <s-text>
+                              {answerPreview || "No answer provided."}
                             </s-text>
                           </s-stack>
                         </s-stack>
 
-                        <s-badge tone={getStatusTone(faq.status)}>
-                          {getStatusLabel(faq.status)}
-                        </s-badge>
+                        <s-stack direction="inline" gap="base">
+                          <s-badge
+                            tone={
+                              faq.status === "published"
+                                ? "success"
+                                : "attention"
+                            }
+                          >
+                            {faq.status}
+                          </s-badge>
+
+                          {faq.category ? (
+                            <s-badge>{faq.category.name}</s-badge>
+                          ) : null}
+
+                          {faq.groups.map((group) => (
+                            <s-badge key={group.id}>{group.name}</s-badge>
+                          ))}
+
+                          {faq.productCount > 0 ? (
+                            <s-badge>
+                              {faq.productCount} product
+                              {faq.productCount === 1 ? "" : "s"}
+                            </s-badge>
+                          ) : null}
+
+                          {faq.collectionCount > 0 ? (
+                            <s-badge>
+                              {faq.collectionCount} collection
+                              {faq.collectionCount === 1 ? "" : "s"}
+                            </s-badge>
+                          ) : null}
+                        </s-stack>
+
+                        <s-stack direction="inline" gap="base">
+                          <s-button href={`/app/faqs/${faq.id}`}>Edit</s-button>
+
+                          <s-button onClick={() => handleDuplicate(faq.id)}>
+                            Duplicate
+                          </s-button>
+
+                          <s-button onClick={() => handleToggleStatus(faq.id)}>
+                            {faq.status === "published"
+                              ? "Move to draft"
+                              : "Publish"}
+                          </s-button>
+
+                          <s-button
+                            tone="critical"
+                            onClick={() => handleDelete(faq.id)}
+                          >
+                            Delete
+                          </s-button>
+                        </s-stack>
                       </s-stack>
+                    </s-section>
+                  );
+                })}
+              </s-stack>
+            )}
+          </s-stack>
+        </s-section>
 
-                      <s-text tone="neutral">{answerPreview}</s-text>
+        {pagination.totalPages > 1 ? (
+          <s-section>
+            <s-stack direction="inline" gap="base" alignItems="center">
+              <s-button
+                onClick={() => goToPage(pagination.page - 1)}
+                disabled={pagination.page <= 1}
+              >
+                Previous
+              </s-button>
 
-                      <s-stack direction="inline" gap="small">
-                        <s-button href={`/app/faqs/${faq.id}`}>Edit</s-button>
-
-                        <s-button
-                          onClick={() => handleDuplicate(faq.id)}
-                          loading={
-                            isFaqSubmitting && submittingIntent === "duplicate"
-                          }
-                          disabled={isFaqSubmitting}
-                        >
-                          Duplicate
-                        </s-button>
-
-                        <s-button
-                          onClick={() => handleToggleStatus(faq.id)}
-                          loading={
-                            isFaqSubmitting &&
-                            submittingIntent === "toggle-status"
-                          }
-                          disabled={isFaqSubmitting}
-                        >
-                          {faq.status === "published"
-                            ? "Move to draft"
-                            : "Publish"}
-                        </s-button>
-
-                        <s-button
-                          tone="critical"
-                          onClick={() => handleDelete(faq.id)}
-                          loading={
-                            isFaqSubmitting && submittingIntent === "delete"
-                          }
-                          disabled={isFaqSubmitting}
-                        >
-                          Delete
-                        </s-button>
-                      </s-stack>
-                    </s-stack>
-                  </s-box>
-                );
-              })}
-            </s-stack>
-          )}
-        </s-stack>
-      </s-section>
-
-      {pagination.totalFaqs > 0 ? (
-        <s-section>
-          <s-stack
-            direction="inline"
-            justifyContent="space-between"
-            alignItems="center"
-            gap="base"
-          >
-            <s-button
-              href={
-                pagination.page > 1
-                  ? buildPageUrl(filters, pagination.page - 1)
-                  : undefined
-              }
-              disabled={pagination.page <= 1}
-            >
-              Previous
-            </s-button>
-
-            <s-stack direction="inline" gap="small" alignItems="center">
               <s-text>
                 Page {pagination.page} of {pagination.totalPages}
               </s-text>
 
-              <s-text tone="neutral">
-                {pagination.totalFaqs}{" "}
-                {pagination.totalFaqs === 1 ? "FAQ" : "FAQs"}
-              </s-text>
+              <s-button
+                onClick={() => goToPage(pagination.page + 1)}
+                disabled={pagination.page >= pagination.totalPages}
+              >
+                Next
+              </s-button>
             </s-stack>
-
-            <s-button
-              href={
-                pagination.page < pagination.totalPages
-                  ? buildPageUrl(filters, pagination.page + 1)
-                  : undefined
-              }
-              disabled={pagination.page >= pagination.totalPages}
-            >
-              Next
-            </s-button>
-          </s-stack>
-        </s-section>
-      ) : null}
+          </s-section>
+        ) : null}
+      </s-stack>
     </s-page>
   );
 }
